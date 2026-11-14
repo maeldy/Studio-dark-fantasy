@@ -5,6 +5,7 @@ interface TouchControlsProps {
   onMove: (input: TouchMoveInput) => void;
   onJump: () => void;
   onSprintChange: (sprinting: boolean) => void;
+  onAttack?: () => void;
   interactPrompt?: InteractPrompt | null;
   onInteract?: () => void;
 }
@@ -15,6 +16,7 @@ export const TouchControls: React.FC<TouchControlsProps> = ({
   onMove,
   onJump,
   onSprintChange,
+  onAttack,
   interactPrompt,
   onInteract,
 }) => {
@@ -159,11 +161,36 @@ export const TouchControls: React.FC<TouchControlsProps> = ({
             }}
             className="flex h-11 items-center justify-center rounded-xl border border-[#e0a65c]/65 bg-[#332718]/92 px-4 text-xs font-medium tracking-wide text-[#f2dfc0] active:bg-[#4b3822] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#e0a65c]"
           >
-            {interactPrompt.kind === 'portal' ? 'Enter' : 'Use'}
+            {interactPrompt.kind === 'portal'
+              ? 'Enter'
+              : interactPrompt.kind === 'npc'
+                ? 'Talk'
+                : interactPrompt.kind === 'resource'
+                  ? 'Gather'
+                  : interactPrompt.kind === 'found_item'
+                    ? 'Take'
+                    : 'Use'}
           </button>
         )}
 
-        <div className="flex items-end gap-3">
+        <div className="flex items-end gap-2.5">
+          {onAttack && (
+            <button
+              type="button"
+              onTouchStart={(e) => {
+                e.stopPropagation();
+                onAttack();
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+                onAttack();
+              }}
+              className="flex h-12 min-w-14 items-center justify-center rounded-xl border border-[#c96a52]/55 bg-[#2e1c1a]/90 px-3 text-xs font-medium tracking-wide text-[#f0d8cf] active:bg-[#472926] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#e0a65c]"
+            >
+              Strike
+            </button>
+          )}
+
           <button
             type="button"
             onTouchStart={(e) => {

@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { GameHud } from './components/GameHud';
 import { TouchControls } from './components/TouchControls';
+import { DEV_TELEPORT_POINTS } from './game/devLocations';
 import { ForestExplorerEngine } from './game/engine';
 import { createInitialSaveState, WORLD_SEED } from './game/persistence';
 import {
+  ActiveDialogue,
   GraphicsQuality,
   InteractPrompt,
+  PlayerVitals,
   ThornvaleSaveState,
   TouchMoveInput,
 } from './game/types';
@@ -34,9 +37,17 @@ export default function App() {
     isTouchDevice() ? 'low' : 'retro'
   );
   const [vhsEnabled, setVhsEnabled] = useState(true);
+  const [devModeEnabled, setDevModeEnabled] = useState(false);
   const [contextLost, setContextLost] = useState(false);
 
   const [interactPrompt, setInteractPrompt] = useState<InteractPrompt | null>(null);
+  const [dialogue, setDialogue] = useState<ActiveDialogue | null>(null);
+  const [vitals, setVitals] = useState<PlayerVitals>({
+    hp: 100,
+    maxHp: 100,
+    inCombat: false,
+    hurtFlash: 0,
+  });
   const [transitionFading, setTransitionFading] = useState(false);
   const [bannerMessage, setBannerMessage] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<ThornvaleSaveState>(() =>
@@ -66,12 +77,15 @@ export default function App() {
         onAudioStateChange: (enabled) => setAudioEnabled(enabled),
         onQualityChange: (q) => setQuality(q),
         onInteractPromptChange: (prompt) => setInteractPrompt(prompt),
+        onDialogueChange: (active) => setDialogue(active),
+        onPlayerVitalsChange: (v) => setVitals(v),
         onTransitionChange: (fading) => setTransitionFading(fading),
         onDiscovery: (placeName, count, total) => {
           showTransientBanner(`Discovered — ${placeName} (${count}/${total})`);
         },
         onStatusMessage: (msg) => showTransientBanner(msg),
         onSaveStateChange: (state) => setSaveState(state),
+        onDevModeChange: (enabled) => setDevModeEnabled(enabled),
       },
       initialQuality
     );
@@ -114,6 +128,18 @@ export default function App() {
     engineRef.current?.triggerInteract();
   }, []);
 
+  const handleAdvanceDialogue = useCallback(() => {
+    engineRef.current?.advanceDialogue();
+  }, []);
+
+  const handleCloseDialogue = useCallback(() => {
+    engineRef.current?.closeDialogue();
+  }, []);
+
+  const handleAttack = useCallback(() => {
+    engineRef.current?.triggerAttack();
+  }, []);
+
   const handleResetSave = useCallback(() => {
     engineRef.current?.resetWorldSave();
   }, []);
@@ -136,6 +162,18 @@ export default function App() {
     });
   }, []);
 
+  const handleToggleDevMode = useCallback((enabled: boolean) => {
+    engineRef.current?.setDevMode(enabled);
+  }, []);
+
+  const handleDevTeleport = useCallback((locationId: string) => {
+    engineRef.current?.teleportToDevLocation(locationId);
+  }, []);
+
+  const handleDevReturnNormal = useCallback(() => {
+    engineRef.current?.returnFromDevTeleport();
+  }, []);
+
   const handleTouchMove = useCallback((input: TouchMoveInput) => {
     engineRef.current?.setTouchMove(input);
   }, []);
@@ -146,6 +184,22 @@ export default function App() {
 
   const handleTouchSprint = useCallback((active: boolean) => {
     engineRef.current?.setTouchSprint(active);
+  }, []);
+
+  const handleMoveInventorySlot = useCallback((fromIdx: number, toIdx: number) => {
+    engineRef.current?.moveInventorySlot(fromIdx, toIdx);
+  }, []);
+
+  const handleSplitInventorySlot = useCallback((slotIdx: number) => {
+    engineRef.current?.splitInventorySlot(slotIdx);
+  }, []);
+
+  const handleDiscardInventoryItem = useCallback((slotIdx: number, amount?: number) => {
+    engineRef.current?.discardInventoryItem(slotIdx, amount);
+  }, []);
+
+  const handleInventoryOpenChange = useCallback((open: boolean) => {
+    engineRef.current?.setInputPaused(open);
   }, []);
 
   return (
@@ -178,7 +232,8 @@ export default function App() {
           onMove={handleTouchMove}
           onJump={handleTouchJump}
           onSprintChange={handleTouchSprint}
-          interactPrompt={interactPrompt}
+          onAttack={handleAttack}
+          interactPrompt={dialogue ? null : interactPrompt}
           onInteract={handleInteract}
         />
       )}
@@ -190,17 +245,30 @@ export default function App() {
         touchEnabled={touchEnabled}
         quality={quality}
         vhsEnabled={vhsEnabled}
+        devModeEnabled={devModeEnabled}
+        devTeleportLocations={DEV_TELEPORT_POINTS}
         interactPrompt={interactPrompt}
+        dialogue={dialogue}
+        vitals={vitals}
         bannerMessage={bannerMessage}
         saveState={saveState}
         onInteract={handleInteract}
+        onAdvanceDialogue={handleAdvanceDialogue}
+        onCloseDialogue={handleCloseDialogue}
         onToggleAudio={handleToggleAudio}
         onToggleLantern={handleToggleLantern}
         onResetCamera={handleResetCamera}
         onToggleTouch={() => setTouchEnabled((v) => !v)}
         onCycleQuality={handleCycleQuality}
         onToggleVhs={handleToggleVhs}
+        onToggleDevMode={handleToggleDevMode}
+        onDevTeleport={handleDevTeleport}
+        onDevReturnNormal={handleDevReturnNormal}
         onResetSave={handleResetSave}
+        onMoveInventorySlot={handleMoveInventorySlot}
+        onSplitInventorySlot={handleSplitInventorySlot}
+        onDiscardInventoryItem={handleDiscardInventoryItem}
+        onInventoryOpenChange={handleInventoryOpenChange}
       />
     </main>
   );

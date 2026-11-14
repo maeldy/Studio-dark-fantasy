@@ -1,0 +1,654 @@
+# PROMPT 2 — DÉVELOPPEMENT DES ANIMAUX, DES CRÉATURES FANTASTIQUES, DES MONSTRES ET DES PNJ
+
+## OBJECTIF GÉNÉRAL
+
+Développe un véritable écosystème vivant pour THORNVALE en ajoutant des animaux, des créatures fantastiques, des monstres et des personnages non-joueurs (PNJ) qui peuplent le monde.
+
+Le but est de transformer le monde actuel en un environnement vivant, crédible, mystérieux et immersif. Le joueur doit pouvoir traverser une forêt et apercevoir des cerfs au loin, entendre des animaux dans les buissons, découvrir une créature étrange près d'une ruine, rencontrer un voyageur sur un chemin ou tomber sur un monstre dans les profondeurs d'une grotte.
+
+Il ne faut surtout pas que ces éléments soient simplement décoratifs. Ils doivent posséder des comportements, réagir à l'environnement et au joueur, se déplacer et interagir avec le monde.
+
+**INSTRUCTIONS ESSENTIELLES :**
+- Travaille directement sur le projet THORNVALE existant.
+- Ne recommence pas le jeu depuis zéro.
+- Ne supprime, ne remplace et ne détériore aucun système déjà fonctionnel.
+- Conserve intégralement les environnements, constructions, grottes, donjons, intérieurs et autres éléments développés dans le Prompt 1.
+- Respecte la direction artistique actuelle du jeu.
+- Crée de véritables entités 3D fonctionnelles, et non de simples images ou illustrations.
+- Ne crée pas de modèles statiques qui donnent seulement l'impression d'être vivants.
+- Tous les animaux, monstres et PNJ doivent pouvoir se déplacer et adopter des comportements cohérents.
+- Privilégie une réalisation visuellement soignée et des comportements simples mais réellement fonctionnels plutôt qu'une multitude d'entités artificielles.
+- Effectue les différentes parties dans l'ordre, sans demander de confirmation entre chaque partie.
+- Vérifie le fonctionnement réel des systèmes avant de terminer.
+
+---
+
+# PARTIE 1 — LES ANIMAUX SAUVAGES
+
+## 1.1. Créer une véritable faune forestière
+
+Ajoute différentes espèces animales adaptées à l'univers médiéval fantastique de THORNVALE.
+
+La forêt doit notamment pouvoir accueillir :
+
+**Grands animaux :**
+- Cerfs.
+- Biches.
+- Chevreuils.
+- Sangliers.
+- Loups.
+- Ours.
+
+**Petits animaux :**
+- Lapins.
+- Renards.
+- Écureuils.
+- Blaireaux.
+- Hérissons.
+- Souris.
+
+**Oiseaux :**
+- Corbeaux.
+- Corneilles.
+- Hiboux.
+- Chouettes.
+- Petits oiseaux forestiers.
+- Aigles ou rapaces dans certaines zones.
+
+Il ne faut pas nécessairement faire apparaître toutes les espèces dans chaque zone. Leur présence doit dépendre du type d'environnement, de la densité de la forêt et de la proximité des constructions.
+
+## 1.2. Donner une véritable apparence 3D aux animaux
+
+Chaque animal doit posséder un modèle 3D reconnaissable, avec une silhouette, des proportions et des caractéristiques propres à son espèce.
+
+Respecte impérativement le style visuel de THORNVALE :
+- Modélisation low-poly inspirée des jeux PS1.
+- Géométrie volontairement simple et anguleuse.
+- Textures basse résolution.
+- Apparence légèrement pixelisée.
+- Couleurs naturelles et désaturées.
+- Rendu imparfait et légèrement granuleux.
+- Intégration cohérente avec les arbres, les sols, les rochers et les autres éléments du monde.
+
+Les animaux doivent être suffisamment détaillés pour être identifiables sans devenir excessivement réalistes ou modernes.
+
+Évite les modèles génériques, les formes trop lisses et les animaux qui semblent provenir d'un jeu 3D contemporain.
+
+Chaque espèce doit avoir ses propres proportions et caractéristiques. Un cerf ne doit pas être simplement un modèle de cheval avec des bois ajoutés.
+
+## 1.3. Créer des comportements naturels
+
+Les animaux doivent adopter des comportements autonomes.
+
+Exemples :
+- Les cerfs marchent tranquillement dans les clairières.
+- Les biches se déplacent parfois en petits groupes.
+- Les lapins traversent rapidement les chemins et se cachent dans la végétation.
+- Les renards se déplacent discrètement entre les arbres.
+- Les sangliers fouillent le sol et peuvent devenir agressifs s'ils sont menacés.
+- Les ours se promènent dans certaines zones isolées.
+- Les oiseaux se posent sur les branches, sautillent et s'envolent lorsqu'ils sont effrayés.
+- Les hiboux et les chouettes peuvent être davantage présents dans les zones sombres et pendant la nuit.
+
+Les animaux doivent pouvoir :
+- Marcher et changer de direction.
+- S'arrêter pour observer leur environnement.
+- Se reposer.
+- Chercher de la nourriture.
+- Se déplacer en fonction de leur environnement.
+- Réagir à la présence du joueur.
+- Fuir lorsqu'ils se sentent menacés.
+- Reprendre progressivement leur comportement normal lorsque le danger disparaît.
+
+Leurs déplacements ne doivent pas être mécaniques. Ils doivent comporter des pauses, des changements de direction et des mouvements légèrement imprévisibles.
+
+## 1.4. Créer des interactions entre les animaux
+
+Les animaux ne doivent pas uniquement réagir au joueur.
+
+Ils doivent également pouvoir interagir entre eux :
+- Les prédateurs peuvent poursuivre certaines proies.
+- Les proies peuvent fuir lorsqu'elles détectent un prédateur.
+- Certains animaux peuvent se déplacer en groupe.
+- Les animaux peuvent se regrouper autour de certaines zones de nourriture.
+- Les oiseaux peuvent s'envoler lorsqu'un animal plus imposant approche.
+
+Ces interactions doivent rester relativement simples et optimisées, mais elles doivent donner l'impression d'un véritable écosystème.
+
+---
+
+# PARTIE 2 — LES CRÉATURES FANTASTIQUES ET MYSTÉRIEUSES
+
+## 2.1. Introduire des créatures propres à THORNVALE
+
+Ajoute des créatures fantastiques qui renforcent le caractère mystérieux et surnaturel du monde.
+
+Il ne faut pas transformer THORNVALE en un univers rempli de monstres fantastiques à chaque coin de rue. Les rencontres doivent être relativement rares, parfois surprenantes et adaptées aux lieux explorés.
+
+Exemples de créatures :
+
+**Créatures forestières :**
+- Esprits de la forêt.
+- Petites créatures humanoïdes vivant dans les arbres.
+- Êtres végétaux recouverts de mousse et de racines.
+- Créatures ressemblant à des cerfs surnaturels.
+- Entités mystérieuses qui observent le joueur depuis les arbres.
+- Créatures nocturnes qui apparaissent brièvement dans le brouillard.
+
+**Créatures anciennes :**
+- Gardiens de pierre.
+- Golems couverts de mousse.
+- Créatures enfouies sous les ruines.
+- Êtres anciens protégeant certains sanctuaires.
+- Créatures vivant dans les profondeurs des grottes.
+
+**Créatures surnaturelles :**
+- Apparitions fantomatiques.
+- Esprits errants.
+- Entités lumineuses.
+- Créatures ombrageuses.
+- Êtres mystérieux apparaissant puis disparaissant dans le brouillard.
+
+Tu peux également imaginer de nouvelles espèces originales adaptées à l'identité de THORNVALE.
+
+Ne te limite pas à ces exemples : développe une faune fantastique cohérente et originale.
+
+## 2.2. Direction artistique des créatures
+
+Les créatures fantastiques doivent être visuellement distinctes des animaux ordinaires.
+
+Leur apparence peut intégrer :
+- Des silhouettes inhabituelles.
+- Des proportions légèrement exagérées.
+- Des membres asymétriques.
+- Des racines, des branches, des pierres ou de la mousse.
+- Des yeux lumineux, avec modération.
+- Des textures anciennes et usées.
+- Des éléments organiques ou surnaturels.
+
+Certaines créatures doivent être inquiétantes sans être systématiquement agressives.
+
+Respecte toujours le style low-poly PS1 de THORNVALE. Même les créatures surnaturelles doivent sembler appartenir au même univers graphique.
+
+Évite les designs trop modernes, les effets visuels excessifs et les monstres génériques de fantasy.
+
+## 2.3. Comportements et réactions
+
+Chaque créature doit posséder un comportement adapté à sa nature.
+
+Exemples :
+- Certaines observent le joueur à distance avant de disparaître.
+- Certaines s'approchent uniquement lorsque le joueur ne bouge pas.
+- Certaines fuient lorsqu'elles sont éclairées.
+- Certaines protègent un territoire.
+- Certaines gardent l'entrée d'un lieu ancien.
+- Certaines restent immobiles et ressemblent presque à des éléments du décor.
+- Certaines deviennent agressives si le joueur s'approche trop.
+
+Les créatures surnaturelles doivent pouvoir avoir des comportements inhabituels, mais ceux-ci doivent rester cohérents et crédibles.
+
+## 2.4. Répartition dans le monde
+
+Ne place pas toutes les créatures de manière aléatoire.
+
+Leur apparition doit dépendre de leur environnement :
+- Les esprits forestiers apparaissent dans les forêts anciennes.
+- Les gardiens de pierre se trouvent près des ruines et des sanctuaires.
+- Les créatures souterraines vivent dans les grottes.
+- Les apparitions fantomatiques peuvent être rencontrées dans les cryptes et les lieux abandonnés.
+- Certaines créatures n'apparaissent que dans des endroits particulièrement isolés.
+
+Le joueur doit parfois pouvoir explorer pendant plusieurs minutes sans rencontrer de créature fantastique, puis en découvrir une de manière inattendue.
+
+---
+
+# PARTIE 3 — LES MONSTRES ET LES CRÉATURES HOSTILES
+
+## 3.1. Créer différentes catégories de monstres
+
+Ajoute des ennemis adaptés aux différents environnements du jeu.
+
+**Forêts :**
+- Loups particulièrement agressifs.
+- Créatures sauvages corrompues.
+- Prédateurs nocturnes.
+- Créatures végétales hostiles.
+
+**Ruines et bâtiments abandonnés :**
+- Gardiens anciens.
+- Créatures humanoïdes déformées.
+- Squelettes animés.
+- Esprits hostiles.
+
+**Grottes et donjons :**
+- Araignées géantes.
+- Créatures souterraines.
+- Golems de pierre.
+- Monstres vivant dans l'obscurité.
+- Gardiens de temples.
+- Créatures anciennes protégeant des trésors.
+
+Il faut créer plusieurs silhouettes et modèles différents. Ne te contente pas de recolorer un même ennemi pour donner l'impression qu'il existe plusieurs espèces.
+
+## 3.2. Développer une intelligence artificielle simple mais fonctionnelle
+
+Les monstres doivent posséder plusieurs états comportementaux :
+
+1. **Repos :** le monstre reste dans sa zone et adopte un comportement naturel.
+2. **Patrouille :** il se déplace dans une zone définie.
+3. **Détection :** il remarque le joueur lorsqu'il entre dans son champ de perception.
+4. **Alerte :** il se rapproche ou observe le joueur.
+5. **Poursuite :** il tente de rejoindre le joueur.
+6. **Attaque :** il utilise son attaque lorsque le joueur est suffisamment proche.
+7. **Désengagement :** il abandonne la poursuite si le joueur s'éloigne suffisamment ou si un obstacle l'empêche de le rejoindre.
+8. **Retour :** il revient progressivement vers sa zone d'origine.
+
+Ces comportements doivent fonctionner réellement dans le jeu.
+
+Les monstres doivent notamment :
+- Détecter les obstacles.
+- Éviter de traverser les murs.
+- Respecter les collisions.
+- Pouvoir naviguer dans leur environnement.
+- Ne pas rester bloqués contre un arbre ou un bâtiment.
+- Ne pas poursuivre le joueur à travers des murs ou des éléments infranchissables.
+
+Adapte la complexité de l'intelligence artificielle à chaque espèce.
+
+## 3.3. Comportements spécifiques
+
+Chaque monstre doit avoir une identité propre.
+
+Exemples :
+- Un loup peut poursuivre le joueur en groupe.
+- Une araignée peut attendre dans un coin sombre avant de surprendre le joueur.
+- Un golem peut être lent, imposant et particulièrement résistant.
+- Un esprit peut se déplacer de manière inhabituelle.
+- Un gardien de pierre peut rester immobile jusqu'à ce que le joueur pénètre dans une zone interdite.
+
+Les attaques doivent être lisibles et cohérentes avec les mouvements des créatures.
+
+Ne rends pas tous les ennemis agressifs immédiatement. Certains doivent pouvoir ignorer le joueur tant qu'il ne les provoque pas.
+
+## 3.4. Apparition et disparition des monstres
+
+Le système de génération des monstres doit être cohérent avec le monde.
+
+- Les monstres doivent apparaître dans des zones adaptées.
+- Les zones dangereuses doivent posséder une identité propre.
+- Les donjons peuvent contenir des monstres spécifiques.
+- Les monstres ne doivent pas apparaître directement devant le joueur sans raison.
+- Évite les apparitions soudaines et visibles.
+- Évite les apparitions répétitives au même endroit.
+- Les monstres doivent disparaître proprement lorsque leur zone est suffisamment éloignée et qu'ils ne sont plus nécessaires.
+
+Conserve les états importants des ennemis lorsque cela est nécessaire, notamment ceux associés à des lieux uniques ou à des rencontres particulières.
+
+---
+
+# PARTIE 4 — LES PNJ ET LES PERSONNAGES DU MONDE
+
+## 4.1. Introduire des personnages non-joueurs
+
+Ajoute des personnages humanoïdes qui permettent de donner une dimension sociale au monde.
+
+Exemples :
+- Voyageurs.
+- Marchands.
+- Chasseurs.
+- Bûcherons.
+- Ermites.
+- Gardes.
+- Aventuriers.
+- Pèlerins.
+- Habitants de villages.
+- Gardiens de lieux anciens.
+
+Les PNJ doivent être intégrés naturellement dans les environnements.
+
+Ils peuvent notamment être rencontrés :
+- Dans les villages.
+- Près des maisons.
+- Dans les auberges.
+- Sur les chemins.
+- Dans les campements.
+- Près des feux de camp.
+- Dans les tours de guet.
+- À proximité des sanctuaires.
+- Dans certains donjons ou lieux abandonnés.
+
+Ne remplis pas artificiellement les lieux avec des dizaines de personnages. Certains endroits doivent rester complètement déserts.
+
+## 4.2. Apparence et diversité des PNJ
+
+Crée plusieurs modèles de personnages avec des différences visibles.
+
+Varie :
+- Les vêtements.
+- Les capuches.
+- Les manteaux.
+- Les armures.
+- Les accessoires.
+- Les sacs.
+- Les armes.
+- Les silhouettes.
+- Les couleurs des vêtements.
+
+Les vêtements doivent correspondre à un univers médiéval fantastique crédible.
+
+Respecte le style low-poly PS1 :
+- Modèles 3D anguleux.
+- Textures basse résolution.
+- Visages volontairement simples.
+- Vêtements visuellement reconnaissables.
+- Apparence légèrement imparfaite.
+
+Évite que tous les PNJ aient exactement le même visage, les mêmes vêtements et la même silhouette.
+
+## 4.3. Donner une vie quotidienne aux PNJ
+
+Les PNJ doivent adopter des comportements autonomes.
+
+Exemples :
+- Un villageois marche dans le village.
+- Un garde patrouille devant une entrée.
+- Un marchand reste près de son étal.
+- Un voyageur marche sur un chemin.
+- Un ermite reste près de sa cabane.
+- Un personnage s'assoit près d'un feu.
+- Un chasseur peut se déplacer dans la forêt.
+- Certains personnages peuvent dormir ou se reposer.
+
+Les PNJ doivent pouvoir :
+- Marcher.
+- S'arrêter.
+- Tourner la tête.
+- Observer leur environnement.
+- Se déplacer entre plusieurs points.
+- Réagir à la présence du joueur.
+- Éviter les obstacles.
+- Ne pas traverser les constructions.
+
+Leurs déplacements doivent être naturels et ne pas ressembler à des trajectoires parfaitement mécaniques.
+
+## 4.4. Système de dialogue
+
+Ajoute la possibilité d'interagir avec les PNJ.
+
+Lorsque le joueur s'approche suffisamment d'un personnage, une indication discrète doit apparaître pour signaler qu'une interaction est possible.
+
+Le joueur doit pouvoir déclencher une conversation à l'aide de la commande d'interaction adaptée à son appareil.
+
+Crée un système de dialogue fonctionnel comprenant :
+- Une fenêtre de dialogue.
+- Le nom du personnage.
+- Le texte prononcé.
+- Une présentation visuelle adaptée à THORNVALE.
+- Une possibilité de faire défiler le texte.
+- Une possibilité de fermer la conversation.
+
+Les dialogues doivent être courts, naturels et adaptés à l'univers.
+
+Exemples :
+- Un voyageur peut avertir le joueur d'un danger dans la forêt.
+- Un marchand peut parler de marchandises ou de lieux éloignés.
+- Un ermite peut évoquer une ancienne légende.
+- Un garde peut expliquer pourquoi une zone est interdite.
+- Un habitant peut raconter quelque chose à propos d'une ruine voisine.
+
+Évite les dialogues génériques répétitifs.
+
+Chaque type de personnage doit posséder plusieurs répliques adaptées à sa fonction et à son environnement.
+
+Prévois une structure permettant d'ajouter facilement de nouveaux dialogues ultérieurement.
+
+## 4.5. Réactions des PNJ au joueur
+
+Les PNJ doivent pouvoir réagir à certaines actions.
+
+Exemples :
+- Un personnage regarde le joueur lorsqu'il s'approche.
+- Un garde peut lui demander de s'éloigner d'une zone interdite.
+- Un habitant peut saluer le joueur.
+- Un voyageur peut réagir à la présence d'un monstre.
+- Un PNJ peut fuir si un danger apparaît à proximité.
+
+Les réactions doivent être discrètes et naturelles.
+
+---
+
+# PARTIE 5 — INTERACTIONS ENTRE LES DIFFÉRENTES ENTITÉS
+
+## 5.1. Créer un monde réellement vivant
+
+Les animaux, créatures, monstres et PNJ doivent pouvoir coexister dans le même monde.
+
+Leurs comportements doivent être compatibles.
+
+Exemples :
+- Les animaux fuient lorsqu'un monstre approche.
+- Les PNJ peuvent réagir à un animal dangereux.
+- Les prédateurs peuvent poursuivre des proies.
+- Les monstres peuvent attaquer certains PNJ si le contexte le permet.
+- Les oiseaux peuvent s'envoler lorsqu'un danger approche.
+- Les créatures surnaturelles peuvent réagir à certaines zones ou à certains personnages.
+
+Toutes ces interactions ne doivent pas nécessairement être présentes partout. Elles doivent dépendre des espèces et des situations.
+
+## 5.2. Réactions à l'environnement
+
+Les entités doivent tenir compte de leur environnement.
+
+Exemples :
+- Les animaux peuvent éviter certaines zones dangereuses.
+- Les créatures peuvent préférer les endroits sombres.
+- Certains monstres restent dans les grottes.
+- Les PNJ utilisent les chemins et les espaces accessibles.
+- Les animaux peuvent se regrouper près de points d'eau.
+- Certaines créatures peuvent apparaître uniquement dans des lieux particuliers.
+
+Le monde doit donner l'impression que chaque espèce possède un habitat et un comportement qui lui sont propres.
+
+---
+
+# PARTIE 6 — RÉPARTITION, POPULATION ET ÉCOSYSTÈME
+
+## 6.1. Créer une répartition naturelle
+
+Ne génère pas les animaux, les monstres et les PNJ de manière totalement aléatoire.
+
+Chaque environnement doit posséder une population adaptée.
+
+Exemples :
+
+**Forêt dense :**
+Cerfs, biches, renards, lapins, sangliers, oiseaux et quelques créatures mystérieuses.
+
+**Clairières :**
+Petits animaux, cerfs, oiseaux et parfois des voyageurs.
+
+**Zones montagneuses :**
+Aigles, ours et créatures adaptées aux environnements rocheux.
+
+**Villages :**
+Habitants, marchands, gardes, voyageurs et quelques animaux domestiques si cela correspond au lieu.
+
+**Grottes :**
+Créatures souterraines, araignées et monstres adaptés à l'obscurité.
+
+**Ruines :**
+Créatures anciennes, esprits, gardiens et parfois des voyageurs.
+
+**Donjons :**
+Monstres, gardiens et créatures spécifiques à chaque complexe.
+
+## 6.2. Contrôler la densité des populations
+
+Évite de surcharger le monde.
+
+Les animaux doivent être présents suffisamment souvent pour rendre les forêts vivantes, mais sans donner l'impression qu'ils sont placés à intervalles réguliers.
+
+Les créatures fantastiques doivent rester relativement rares.
+
+Les monstres doivent être principalement concentrés dans les zones dangereuses.
+
+Les PNJ doivent être présents dans les lieux habités ou fréquentés, sans transformer les villages en foules artificielles.
+
+La densité doit pouvoir varier en fonction des environnements.
+
+## 6.3. Apparition persistante et cohérente
+
+Le système de génération doit respecter la structure actuelle du monde.
+
+- Utilise les coordonnées et la génération procédurale existantes.
+- Conserve les entités importantes dans leurs zones respectives.
+- Évite que les animaux changent constamment de position après chaque chargement.
+- Évite que les mêmes groupes d'animaux apparaissent toujours exactement de la même manière.
+- Ne fais pas réapparaître instantanément les monstres éliminés ou les créatures uniques.
+- Prévois une gestion des entités éloignées pour éviter de surcharger le jeu.
+
+Les zones importantes doivent conserver leur cohérence lorsqu'on les quitte puis qu'on y revient.
+
+---
+
+# PARTIE 7 — INTÉGRATION VISUELLE ET IMMERSION
+
+## 7.1. Respecter l'identité visuelle de THORNVALE
+
+Tous les nouveaux modèles doivent respecter la direction artistique déjà établie.
+
+Rappel :
+- Univers médiéval fantastique sombre et mystérieux.
+- Graphismes 3D low-poly inspirés de la PlayStation 1.
+- Textures basse résolution et légèrement pixelisées.
+- Couleurs naturelles, sombres et désaturées.
+- Brouillard atmosphérique.
+- Rendu légèrement granuleux et imparfait.
+- Éclairage localisé et adapté aux environnements.
+
+Les animaux doivent être parfaitement intégrés au sol, aux végétaux et aux constructions.
+
+Les créatures doivent sembler appartenir au monde et non être simplement ajoutées par-dessus.
+
+## 7.2. Adapter les créatures à la lumière
+
+Les animaux, monstres et PNJ doivent être correctement intégrés au système d'éclairage.
+
+Exemples :
+- Un cerf dans une forêt doit être éclairé par la lumière naturelle filtrant entre les arbres.
+- Un animal passant près d'une lanterne doit recevoir une lumière chaude.
+- Un monstre dans une grotte doit être partiellement éclairé par les torches.
+- Un esprit lumineux peut produire une faible lumière autour de lui.
+- Les personnages près d'un feu doivent recevoir une lumière chaude et légèrement vacillante.
+
+Les ombres et les éclairages doivent rester cohérents avec le moteur graphique actuel.
+
+Ne rends pas les entités excessivement lumineuses ou artificiellement brillantes.
+
+## 7.3. Éviter les apparitions artificielles
+
+Les entités doivent apparaître naturellement dans le monde.
+
+Évite :
+- Les animaux qui apparaissent soudainement devant le joueur.
+- Les monstres qui surgissent sans transition.
+- Les PNJ qui apparaissent au milieu d'une conversation.
+- Les créatures qui flottent au-dessus du sol.
+- Les animaux qui restent immobiles sans raison.
+- Les entités qui traversent les murs ou les arbres.
+
+Les apparitions doivent être discrètes et cohérentes avec l'environnement.
+
+---
+
+# PARTIE 8 — OPTIMISATION ET PERFORMANCES
+
+## 8.1. Optimiser les entités
+
+Le monde peut contenir de nombreuses entités différentes. Il est donc indispensable de préserver les performances.
+
+Mets en place une gestion intelligente :
+- Les entités proches du joueur bénéficient de comportements complets.
+- Les entités éloignées utilisent des calculs simplifiés.
+- Les entités très éloignées peuvent être suspendues ou déchargées.
+- Les animations inutiles ne doivent pas être calculées hors de portée.
+- Les modèles et matériaux peuvent être réutilisés lorsque cela est pertinent.
+- Les collisions doivent être optimisées.
+
+Ne sacrifie pas inutilement la qualité visuelle.
+
+## 8.2. Optimisation mobile et ordinateur
+
+Le jeu doit rester jouable sur tablette Android comme sur ordinateur.
+
+Vérifie :
+- Les performances lorsque plusieurs animaux sont présents.
+- Les performances dans les villages contenant plusieurs PNJ.
+- Les combats avec plusieurs monstres.
+- Les déplacements dans les zones peuplées.
+- Les changements de zones.
+- Les chargements et déchargements d'entités.
+
+Évite les chutes importantes de FPS et les ralentissements provoqués par l'intelligence artificielle.
+
+Conserve les commandes et l'interface adaptées aux deux types d'appareils.
+
+---
+
+# PARTIE 9 — TESTS ET VALIDATION
+
+Avant de terminer, teste réellement les systèmes ajoutés.
+
+**Tests de la faune :**
+- Vérifier que plusieurs espèces apparaissent dans leurs environnements.
+- Vérifier que les animaux se déplacent naturellement.
+- Vérifier qu'ils fuient le joueur lorsqu'ils sont effrayés.
+- Vérifier que les oiseaux peuvent s'envoler.
+- Vérifier que les animaux ne traversent pas les obstacles.
+
+**Tests des créatures :**
+- Vérifier que les créatures fantastiques apparaissent dans les lieux appropriés.
+- Vérifier leurs comportements.
+- Vérifier leurs réactions au joueur.
+- Vérifier leurs déplacements et leurs collisions.
+
+**Tests des monstres :**
+- Vérifier les différentes étapes de leur intelligence artificielle.
+- Vérifier leur détection du joueur.
+- Vérifier les poursuites et les attaques.
+- Vérifier qu'ils ne traversent pas les murs.
+- Vérifier qu'ils ne restent pas bloqués.
+
+**Tests des PNJ :**
+- Vérifier leurs déplacements.
+- Vérifier leurs comportements autonomes.
+- Vérifier les interactions.
+- Vérifier les dialogues.
+- Vérifier que les fenêtres de dialogue peuvent être ouvertes et fermées correctement.
+
+**Tests généraux :**
+- Vérifier la coexistence des différentes entités.
+- Vérifier leur répartition dans le monde.
+- Vérifier leur intégration visuelle.
+- Vérifier les performances sur tablette et ordinateur.
+- Vérifier que les systèmes du Prompt 1 fonctionnent toujours correctement.
+
+Corrige les problèmes rencontrés avant de terminer.
+
+---
+
+# INSTRUCTIONS FINALES
+
+Exécute toutes les parties de ce prompt dans l'ordre, sans attendre de validation entre chacune d'elles.
+
+Ne te contente pas de créer des modèles ou des éléments visuels : développe les systèmes nécessaires pour qu'ils fonctionnent réellement dans le jeu.
+
+Ne remplace pas les systèmes déjà fonctionnels par des versions simplifiées.
+
+Privilégie une réalisation cohérente, immersive et de qualité.
+
+Si certaines fonctionnalités sont trop complexes pour être intégrées correctement en une seule fois, développe d'abord une version fonctionnelle et optimisée, sans créer de faux systèmes ou d'éléments purement décoratifs.
+
+À la fin, le joueur doit pouvoir explorer THORNVALE et rencontrer un monde peuplé d'animaux, de créatures mystérieuses, de monstres et de personnages autonomes.
+
+**Le résultat recherché : THORNVALE doit donner l'impression d'être un véritable monde vivant, ancien, mystérieux et habité, dans lequel chaque rencontre peut devenir une découverte.**

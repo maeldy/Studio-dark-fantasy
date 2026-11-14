@@ -46,6 +46,7 @@ import {
 import { WORLD_SEED } from './persistence';
 import {
   applyRetroVertexSnap,
+  biomeAt,
   BOG_CENTER,
   BOG_WATER_LEVEL,
   BRIDGE_CENTER,
@@ -55,6 +56,7 @@ import {
   buildTerrainMesh,
   CABIN_CENTER,
   CABIN_YAW,
+  CASCADE_CENTER,
   CAVE_ANCIENT_CENTER,
   CAVE_ANCIENT_YAW,
   CAVE_CRAG_CENTER,
@@ -65,20 +67,32 @@ import {
   CITADEL_GATE_YAW,
   COTTAGE_CENTER,
   COTTAGE_YAW,
+  DEEPWOOD_NORTH_CENTER,
+  FEN_NORTH_CENTER,
+  getCascadePoolWaterLevel,
+  getFenWaterLevel,
+  getMoorWaterLevel,
   getPondWaterLevel,
   groundHeightAt,
   groundSlopeAt,
   groveDensityAt,
+  HIGHLAND_RUIN_CENTER,
+  MOOR_POND_CENTER,
   pathDistanceAt,
+  PLAYABLE_BOUNDS_RADIUS,
   POND_CENTER,
   RUINS_CENTER,
   RUINS_YAW,
   SHRINE_CENTER,
   SHRINE_YAW,
+  silverwindCurve,
+  STONEFALL_CIRCLE_CENTER,
   streamCurve,
   streamDistanceAt,
+  THORNWOOD_GLADES_CENTER,
   TOWER_CENTER,
   TOWER_YAW,
+  WAYSTATION_CENTER,
 } from './terrain';
 import { ProceduralTextures } from './textures';
 import { BoxCollider, CircleCollider, LightAnchor, PortalLink } from './types';
@@ -87,6 +101,13 @@ export interface AnimatedEmber {
   ember: THREE.Mesh;
   phase: number;
   baseScale?: [number, number, number];
+}
+
+export interface WorldZoneChunk {
+  cx: number;
+  cz: number;
+  maxDistSq: number;
+  group: THREE.Group;
 }
 
 export interface WorldBuildResult {
@@ -99,6 +120,7 @@ export interface WorldBuildResult {
   mistPoints: THREE.Points;
   crowGroup: THREE.Group;
   setDensityScale: (density: number) => void;
+  updateVisibility: (playerX: number, playerZ: number, elapsed: number) => void;
 }
 
 interface PlacedTreeRecord {
@@ -221,10 +243,13 @@ function attachWindSway(
   };
 }
 
-function createStreamWaterGeometry(): THREE.BufferGeometry {
-  const segs = 40;
-  const halfW = 1.45;
-  const pts = streamCurve.getPoints(segs);
+function createRibbonStreamGeometry(
+  curve: THREE.CatmullRomCurve3,
+  segs: number,
+  halfW: number,
+  heightOffset = 0.52
+): THREE.BufferGeometry {
+  const pts = curve.getPoints(segs);
   const positions: number[] = [];
   const uvs: number[] = [];
   const indices: number[] = [];
@@ -240,13 +265,13 @@ function createStreamWaterGeometry(): THREE.BufferGeometry {
     const nz = tx / len;
 
     const centerBedY = groundHeightAt(p.x, p.z);
-    const waterY = centerBedY + 0.52;
+    const waterY = centerBedY + heightOffset;
 
     positions.push(p.x - nx * halfW, waterY, p.z - nz * halfW);
     positions.push(p.x + nx * halfW, waterY, p.z + nz * halfW);
 
     const v = i / segs;
-    uvs.push(0, v * 8, 1, v * 8);
+    uvs.push(0, v * 10, 1, v * 10);
 
     if (i < segs) {
       const b = i * 2;
@@ -289,12 +314,20 @@ export function buildForestWorld(
   const windUniforms = { uTime: { value: 0 } };
   const rand = seededRand(WORLD_SEED);
   const scalableMeshes: { inst: THREE.InstancedMesh; maxCount: number }[] = [];
+  const zoneChunks: WorldZoneChunk[] = [];
 
-  // 1. Continuous Expanded Forest Terrain (320m mesh, 92m playable radius)
+  const registerZoneChunk = (cx: number, cz: number, cullRadius = 96): THREE.Group => {
+    const g = new THREE.Group();
+    scene.add(g);
+    zoneChunks.push({ cx, cz, maxDistSq: cullRadius * cullRadius, group: g });
+    return g;
+  };
+
+  // 1. Continuous Expanded Forest Terrain (460m mesh, 168m playable radius)
   const terrain = buildTerrainMesh(textures.groundColor);
   scene.add(terrain);
 
-  // 2. Water Features: Western Bog Tarn + Winding Blackwater Brook + Eastern Silvermire Pond
+  // 2. Water Features: Bog Tarn, Blackwater Brook, Silvermire Pond + Outer Fen, Moorland, Silverwind River & Waterfall
   const waterMat = new THREE.MeshLambertMaterial({
     color: '#1f2930',
     transparent: true,
@@ -314,9 +347,19 @@ export function buildForestWorld(
     opacity: 0.86,
     side: THREE.DoubleSide,
   });
-  const streamMesh = new THREE.Mesh(createStreamWaterGeometry(), streamMat);
+  const streamMesh = new THREE.Mesh(
+    createRibbonStreamGeometry(streamCurve, 40, 1.45, 0.52),
+    streamMat
+  );
   streamMesh.receiveShadow = true;
   scene.add(streamMesh);
+
+  const silverwindMesh = new THREE.Mesh(
+    createRibbonStreamGeometry(silverwindCurve, 56, 1.75, 0.44),
+    streamMat
+  );
+  silverwindMesh.receiveShadow = true;
+  scene.add(silverwindMesh);
 
   const pondWater = new THREE.Mesh(new THREE.CircleGeometry(7.2, 16), waterMat);
   pondWater.rotation.x = -Math.PI / 2;
@@ -325,7 +368,83 @@ export function buildForestWorld(
   pondWater.receiveShadow = true;
   scene.add(pondWater);
 
-  // Gnarled dead trees around the bog, pond shore, and Whispering Ring
+  // Whispering Fen Tarn (NE Marsh)
+  const fenWater = new THREE.Mesh(new THREE.CircleGeometry(8.4, 16), waterMat);
+  fenWater.rotation.x = -Math.PI / 2;
+  fenWater.scale.set(1.18, 0.9, 1.0);
+  fenWater.position.set(FEN_NORTH_CENTER.x, getFenWaterLevel(), FEN_NORTH_CENTER.z);
+  fenWater.receiveShadow = true;
+  scene.add(fenWater);
+
+  // Western Moorland Tarn (SW Marsh)
+  const moorWater = new THREE.Mesh(new THREE.CircleGeometry(8.8, 16), waterMat);
+  moorWater.rotation.x = -Math.PI / 2;
+  moorWater.scale.set(1.2, 0.88, 1.0);
+  moorWater.position.set(MOOR_POND_CENTER.x, getMoorWaterLevel(), MOOR_POND_CENTER.z);
+  moorWater.receiveShadow = true;
+  scene.add(moorWater);
+
+  // Silverwind Cascade Pool & Waterfall Ledge
+  const cascadePoolY = getCascadePoolWaterLevel();
+  const cascadePool = new THREE.Mesh(new THREE.CircleGeometry(6.8, 16), waterMat);
+  cascadePool.rotation.x = -Math.PI / 2;
+  cascadePool.position.set(CASCADE_CENTER.x, cascadePoolY, CASCADE_CENTER.z);
+  cascadePool.receiveShadow = true;
+  scene.add(cascadePool);
+
+  const waterfallChunk = registerZoneChunk(CASCADE_CENTER.x, CASCADE_CENTER.z, 98);
+  const cascadeUpperY = groundHeightAt(114.0, -54.0) + 0.35;
+  const cascadeFallH = Math.max(2.2, cascadeUpperY - cascadePoolY);
+  const cascadeSheetMat = new THREE.MeshLambertMaterial({
+    color: '#7da1ae',
+    transparent: true,
+    opacity: 0.72,
+    side: THREE.DoubleSide,
+  });
+  const cascadeFoamMat = new THREE.MeshBasicMaterial({
+    color: '#c7dbe0',
+    transparent: true,
+    opacity: 0.56,
+  });
+  const waterfallSheet = new THREE.Mesh(
+    new THREE.PlaneGeometry(3.2, cascadeFallH + 0.5),
+    cascadeSheetMat
+  );
+  waterfallSheet.position.set(113.4, cascadePoolY + cascadeFallH * 0.48, -49.2);
+  waterfallSheet.rotation.set(-0.24, -0.14, 0);
+  waterfallChunk.add(waterfallSheet);
+
+  const waterfallFoam = new THREE.Mesh(
+    new THREE.CylinderGeometry(2.1, 2.5, 0.35, 8),
+    cascadeFoamMat
+  );
+  waterfallFoam.position.set(113.0, cascadePoolY + 0.08, -47.2);
+  waterfallChunk.add(waterfallFoam);
+
+  // Stepping stones ford across Silverwind Creek near (108.5, -18)
+  const fordStoneMat = new THREE.MeshLambertMaterial({
+    map: textures.stoneColor,
+    color: '#889299',
+    flatShading: true,
+  });
+  applyRetroVertexSnap(fordStoneMat, 200);
+  const fordPoints: [number, number][] = [
+    [105.6, -17.5],
+    [107.1, -17.8],
+    [108.6, -18.0],
+    [110.2, -18.1],
+    [111.7, -18.0],
+  ];
+  for (let i = 0; i < fordPoints.length; i++) {
+    const [fx, fz] = fordPoints[i];
+    const st = new THREE.Mesh(new THREE.CylinderGeometry(0.68, 0.78, 0.34, 6), fordStoneMat);
+    st.position.set(fx, groundHeightAt(fx, fz) + 0.1, fz);
+    st.rotation.y = i * 0.7;
+    st.receiveShadow = true;
+    scene.add(st);
+  }
+
+  // Gnarled dead trees around the bog, pond shore, Whispering Ring, Fen Tarn & Moorland
   const deadTreeSpots = [
     { x: BOG_CENTER.x - 4.2, z: BOG_CENTER.z - 2.6, s: 1.05, r: 0.4 },
     { x: BOG_CENTER.x + 2.8, z: BOG_CENTER.z - 4.8, s: 0.92, r: -1.1 },
@@ -334,6 +453,11 @@ export function buildForestWorld(
     { x: POND_CENTER.x + 6.4, z: POND_CENTER.z - 5.2, s: 0.95, r: -0.7 },
     { x: -53.0, z: -23.5, s: 1.12, r: 1.4 },
     { x: -39.5, z: -12.5, s: 1.02, r: -1.8 },
+    { x: FEN_NORTH_CENTER.x - 7.2, z: FEN_NORTH_CENTER.z + 5.4, s: 1.18, r: 0.7 },
+    { x: FEN_NORTH_CENTER.x + 6.8, z: FEN_NORTH_CENTER.z - 6.0, s: 1.06, r: -1.3 },
+    { x: FEN_NORTH_CENTER.x - 5.4, z: FEN_NORTH_CENTER.z - 6.8, s: 0.94, r: 2.2 },
+    { x: MOOR_POND_CENTER.x - 7.6, z: MOOR_POND_CENTER.z - 4.8, s: 1.15, r: 0.3 },
+    { x: MOOR_POND_CENTER.x + 7.2, z: MOOR_POND_CENTER.z + 5.2, s: 1.04, r: -1.9 },
   ];
   for (const dt of deadTreeSpots) {
     const tree = createDeadBogTree(textures, dt.s);
@@ -763,7 +887,146 @@ export function buildForestWorld(
     )
   );
 
-  // 13. Natural Rock Formations across Cragstone Tor + forest ridges & slopes
+  // 13. Outer Regional Landmarks & Natural Rock Formations
+  // A. Northern Deepwood Shrine Clearing (-19, -116)
+  const deepwoodChunk = registerZoneChunk(DEEPWOOD_NORTH_CENTER.x, DEEPWOOD_NORTH_CENTER.z, 96);
+  const dwShrine = createWaystoneShrine(textures);
+  const dwY = groundHeightAt(DEEPWOOD_NORTH_CENTER.x, DEEPWOOD_NORTH_CENTER.z) - 0.05;
+  dwShrine.position.set(DEEPWOOD_NORTH_CENTER.x, dwY, DEEPWOOD_NORTH_CENTER.z);
+  dwShrine.rotation.y = 0.4;
+  deepwoodChunk.add(dwShrine);
+  colliders.push({ x: DEEPWOOD_NORTH_CENTER.x, z: DEEPWOOD_NORTH_CENTER.z, radius: 1.45, kind: 'ruin' });
+  const dwPost = createLanternPost(textures);
+  const dwPostX = DEEPWOOD_NORTH_CENTER.x + 3.8;
+  const dwPostZ = DEEPWOOD_NORTH_CENTER.z + 4.2;
+  const dwPostY = groundHeightAt(dwPostX, dwPostZ) - 0.04;
+  dwPost.group.position.set(dwPostX, dwPostY, dwPostZ);
+  dwPost.group.rotation.y = -2.4;
+  deepwoodChunk.add(dwPost.group);
+  colliders.push({ x: dwPostX, z: dwPostZ, radius: 0.35, kind: 'prop' });
+  embers.push({ ember: dwPost.ember, phase: 6.7 });
+  lightAnchors.push({
+    x: dwPostX,
+    y: dwPostY + 2.2,
+    z: dwPostZ,
+    color: '#ff9640',
+    baseIntensity: 5.2,
+    distance: 14,
+    phase: 6.7,
+  });
+
+  // B. Highland Watch-Ruin above Silverwind Gorge (124, -18)
+  const highlandChunk = registerZoneChunk(HIGHLAND_RUIN_CENTER.x, HIGHLAND_RUIN_CENTER.z, 96);
+  const hrStoneMat = new THREE.MeshLambertMaterial({
+    map: textures.stoneColor,
+    color: '#8f989e',
+    flatShading: true,
+  });
+  applyRetroVertexSnap(hrStoneMat, 200);
+  const hrBaseY = groundHeightAt(HIGHLAND_RUIN_CENTER.x, HIGHLAND_RUIN_CENTER.z) - 0.08;
+  const hrPlinth = new THREE.Mesh(new THREE.BoxGeometry(6.4, 0.5, 6.4), hrStoneMat);
+  hrPlinth.position.set(HIGHLAND_RUIN_CENTER.x, hrBaseY + 0.22, HIGHLAND_RUIN_CENTER.z);
+  hrPlinth.receiveShadow = true;
+  highlandChunk.add(hrPlinth);
+  const hrWalls: [number, number, number, number, number][] = [
+    [-2.5, 0, 0.85, 3.4, 5.4],
+    [2.5, -0.6, 0.85, 2.2, 4.0],
+    [0, -2.5, 5.2, 4.1, 0.85],
+  ];
+  for (const [ox, oz, w, h, d] of hrWalls) {
+    const wall = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), hrStoneMat);
+    wall.position.set(HIGHLAND_RUIN_CENTER.x + ox, hrBaseY + 0.4 + h * 0.5, HIGHLAND_RUIN_CENTER.z + oz);
+    wall.castShadow = true;
+    wall.receiveShadow = true;
+    highlandChunk.add(wall);
+    boxColliders.push({
+      cx: HIGHLAND_RUIN_CENTER.x + ox,
+      cz: HIGHLAND_RUIN_CENTER.z + oz,
+      halfW: w * 0.5,
+      halfD: d * 0.5,
+      rotY: 0,
+      kind: 'ruin',
+    });
+  }
+  const hrBrazier = createIronBrazier();
+  hrBrazier.group.position.set(HIGHLAND_RUIN_CENTER.x, hrBaseY + 0.45, HIGHLAND_RUIN_CENTER.z + 0.4);
+  highlandChunk.add(hrBrazier.group);
+  colliders.push({ x: HIGHLAND_RUIN_CENTER.x, z: HIGHLAND_RUIN_CENTER.z + 0.4, radius: 0.55, kind: 'prop' });
+  embers.push({ ember: hrBrazier.ember, phase: 8.4 });
+  lightAnchors.push({
+    x: HIGHLAND_RUIN_CENTER.x,
+    y: hrBaseY + 1.65,
+    z: HIGHLAND_RUIN_CENTER.z + 0.4,
+    color: '#ff8a33',
+    baseIntensity: 6.4,
+    distance: 17,
+    phase: 8.4,
+  });
+
+  // C. Old Timber Waystation Camp in SE Thornwood (62, 98)
+  const wayChunk = registerZoneChunk(WAYSTATION_CENTER.x, WAYSTATION_CENTER.z, 96);
+  const wsWoodMat = new THREE.MeshLambertMaterial({
+    map: textures.woodPlankColor,
+    color: '#9c8b79',
+    flatShading: true,
+  });
+  applyRetroVertexSnap(wsWoodMat, 200);
+  const wsY = groundHeightAt(WAYSTATION_CENTER.x, WAYSTATION_CENTER.z) - 0.05;
+  const wsCart = createAbandonedCart(textures);
+  wsCart.position.set(WAYSTATION_CENTER.x - 3.2, wsY, WAYSTATION_CENTER.z + 1.8);
+  wsCart.rotation.y = 0.9;
+  wayChunk.add(wsCart);
+  colliders.push({ x: WAYSTATION_CENTER.x - 3.2, z: WAYSTATION_CENTER.z + 1.8, radius: 1.35, kind: 'prop' });
+
+  for (const [px, pz] of [[-1.5, -2.5], [1.5, -2.5], [-1.5, -0.5], [1.5, -0.5]]) {
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.13, 2.35, 5), wsWoodMat);
+    post.position.set(WAYSTATION_CENTER.x + px, wsY + 1.15, WAYSTATION_CENTER.z + pz);
+    post.castShadow = true;
+    wayChunk.add(post);
+    colliders.push({ x: WAYSTATION_CENTER.x + px, z: WAYSTATION_CENTER.z + pz, radius: 0.25, kind: 'prop' });
+  }
+  const leanRoof = new THREE.Mesh(new THREE.BoxGeometry(3.8, 0.14, 2.8), wsWoodMat);
+  leanRoof.position.set(WAYSTATION_CENTER.x, wsY + 2.25, WAYSTATION_CENTER.z - 1.5);
+  leanRoof.rotation.x = 0.16;
+  leanRoof.castShadow = true;
+  wayChunk.add(leanRoof);
+
+  const wsBrazier = createIronBrazier();
+  wsBrazier.group.position.set(WAYSTATION_CENTER.x + 1.8, wsY, WAYSTATION_CENTER.z + 2.4);
+  wayChunk.add(wsBrazier.group);
+  colliders.push({ x: WAYSTATION_CENTER.x + 1.8, z: WAYSTATION_CENTER.z + 2.4, radius: 0.55, kind: 'prop' });
+  embers.push({ ember: wsBrazier.ember, phase: 4.9 });
+  lightAnchors.push({
+    x: WAYSTATION_CENTER.x + 1.8,
+    y: wsY + 1.25,
+    z: WAYSTATION_CENTER.z + 2.4,
+    color: '#ff8a33',
+    baseIntensity: 5.8,
+    distance: 15,
+    phase: 4.9,
+  });
+
+  // D. Stonefall Stone Circle (-122, -32)
+  const stonefallChunk = registerZoneChunk(STONEFALL_CIRCLE_CENTER.x, STONEFALL_CIRCLE_CENTER.z, 96);
+  for (let i = 0; i < 7; i++) {
+    const a = (i / 7) * Math.PI * 2 + 0.2;
+    const rad = 7.4 + (i % 2) * 0.6;
+    const sx = STONEFALL_CIRCLE_CENTER.x + Math.cos(a) * rad;
+    const sz = STONEFALL_CIRCLE_CENTER.z + Math.sin(a) * rad;
+    const st = createStandingStone(textures, 2.5 + (i % 3) * 0.55);
+    st.position.set(sx, groundHeightAt(sx, sz) - 0.08, sz);
+    st.rotation.set(((i % 2) - 0.5) * 0.1, -a + Math.PI * 0.5, 0);
+    stonefallChunk.add(st);
+    colliders.push({ x: sx, z: sz, radius: 0.65, kind: 'ruin' });
+  }
+  const scSent = createSentinelStatue(textures);
+  const scY = groundHeightAt(STONEFALL_CIRCLE_CENTER.x, STONEFALL_CIRCLE_CENTER.z) - 0.05;
+  scSent.position.set(STONEFALL_CIRCLE_CENTER.x, scY, STONEFALL_CIRCLE_CENTER.z);
+  scSent.rotation.y = 1.4;
+  stonefallChunk.add(scSent);
+  colliders.push({ x: STONEFALL_CIRCLE_CENTER.x, z: STONEFALL_CIRCLE_CENTER.z, radius: 0.85, kind: 'ruin' });
+
+  // E. Natural Rock Formations across Cragstone Tor + outer crag ridges & passes
   const cragSpecs: { x: number; z: number; v: 0 | 1 | 2; s: number; r: number; colR: number }[] = [
     { x: 46.5, z: 10.5, v: 0, s: 1.18, r: 0.4, colR: 2.0 },
     { x: 40.5, z: 18.2, v: 1, s: 1.05, r: -0.7, colR: 1.85 },
@@ -772,7 +1035,6 @@ export function buildForestWorld(
     { x: -34.0, z: -50.0, v: 1, s: 1.1, r: 0.8, colR: 1.9 },
     { x: 24.0, z: -55.0, v: 2, s: 1.05, r: -1.3, colR: 1.85 },
     { x: 60.0, z: -61.0, v: 0, s: 1.08, r: 0.2, colR: 1.9 },
-    // Additional organic outcrops distributed on ridges and hollows
     { x: -24.0, z: -12.0, v: 2, s: 1.05, r: 0.5, colR: 1.85 },
     { x: -27.5, z: -8.0, v: 1, s: 0.92, r: -0.9, colR: 1.65 },
     { x: 17.5, z: -38.5, v: 0, s: 1.0, r: 1.5, colR: 1.75 },
@@ -783,6 +1045,19 @@ export function buildForestWorld(
     { x: 66.5, z: -43.0, v: 1, s: 1.02, r: -1.6, colR: 1.8 },
     { x: -64.0, z: -38.0, v: 0, s: 1.1, r: 0.85, colR: 1.9 },
     { x: 4.5, z: 34.0, v: 2, s: 0.96, r: -2.1, colR: 1.7 },
+    // Outer Rocky Crags (Silverwind Waterfall cliffs, Highland Crags, Stonefall Canyon)
+    { x: 108.5, z: -51.5, v: 0, s: 1.55, r: 0.6, colR: 2.6 },
+    { x: 118.5, z: -50.5, v: 2, s: 1.62, r: -0.9, colR: 2.7 },
+    { x: 122.0, z: -36.0, v: 1, s: 1.35, r: 1.4, colR: 2.25 },
+    { x: 134.0, z: -12.0, v: 0, s: 1.48, r: 2.1, colR: 2.4 },
+    { x: 126.0, z: 8.0, v: 2, s: 1.28, r: -1.1, colR: 2.1 },
+    { x: 96.0, z: -28.0, v: 1, s: 1.18, r: 0.3, colR: 1.95 },
+    { x: -94.0, z: -28.0, v: 0, s: 1.45, r: 1.2, colR: 2.35 },
+    { x: -98.0, z: -4.0, v: 2, s: 1.38, r: -0.8, colR: 2.25 },
+    { x: -112.0, z: -44.0, v: 1, s: 1.42, r: 0.4, colR: 2.3 },
+    { x: -136.0, z: -26.0, v: 0, s: 1.5, r: 2.4, colR: 2.5 },
+    { x: -34.0, z: -102.0, v: 2, s: 1.25, r: 0.9, colR: 2.0 },
+    { x: 42.0, z: 112.0, v: 1, s: 1.22, r: -1.5, colR: 2.0 },
   ];
   for (const cs of cragSpecs) {
     const crag = createRockFormation(textures, cs.v, cs.s);
@@ -819,10 +1094,13 @@ export function buildForestWorld(
     { x: -27.0, z: -22.5, r: 4.0 },
     { x: 15.0, z: -53.0, r: 4.1 },
     { x: -20.0, z: 27.0, r: 4.3 },
+    { x: -19.0, z: -116.0, r: 6.5 },
+    { x: 10.0, z: 108.0, r: 8.5 },
+    { x: -46.0, z: 92.0, r: 5.5 },
+    { x: 76.0, z: -86.0, r: 5.5 },
   ];
 
   // Keep a misty sightline corridor open from Winding Pine Hollow toward Greywatch Tower
-  // Keep misty sightline corridors open toward Greywatch Tower (from North Trail Bend & Pine Hollow)
   const distToSeg = (x: number, z: number, ax: number, az: number, bx: number, bz: number): number => {
     const abx = bx - ax;
     const abz = bz - az;
@@ -848,10 +1126,13 @@ export function buildForestWorld(
   ): boolean => {
     const originMin = allowClearingEdge ? 7.6 : 8.5;
     if (Math.hypot(x, z) < originMin) return false;
-    if (Math.hypot(x - 0, z - 5.2) < 3.4) return false; // Player spawn & camera clearance
-    if (z > 6.2 && z < 11.8 && Math.abs(x) < 3.4) return false; // Initial behind-camera cone
+    if (Math.hypot(x - 0, z - 5.2) < 3.4) return false;
+    if (z > 6.2 && z < 11.8 && Math.abs(x) < 3.4) return false;
     if (Math.hypot(x - BOG_CENTER.x, z - BOG_CENTER.z) < 6.4) return false;
     if (Math.hypot(x - POND_CENTER.x, z - POND_CENTER.z) < 8.1) return false;
+    if (Math.hypot(x - FEN_NORTH_CENTER.x, z - FEN_NORTH_CENTER.z) < 10.2) return false;
+    if (Math.hypot(x - MOOR_POND_CENTER.x, z - MOOR_POND_CENTER.z) < 10.6) return false;
+    if (Math.hypot(x - CASCADE_CENTER.x, z - CASCADE_CENTER.z) < 8.8) return false;
     if (streamDistanceAt(x, z) < minWater) return false;
     if (pathDistanceAt(x, z) < minPath) return false;
     if (Math.hypot(x - gateX, z - gateZ) < 6.0) return false;
@@ -860,15 +1141,18 @@ export function buildForestWorld(
     if (Math.hypot(x - cottageX, z - cottageZ) < 6.8) return false;
     if (Math.hypot(x - bastionX, z - bastionZ) < 10.2) return false;
     if (Math.hypot(x - ringX, z - ringZ) < 10.6) return false;
-    if (Math.hypot(x + 41.2, z + 10.2) < 4.8) return false; // Shrine front staircase & glade approach
+    if (Math.hypot(x + 41.2, z + 10.2) < 4.8) return false;
     if (Math.hypot(x - towerX, z - towerZ) < 9.4) return false;
-    if (Math.hypot(x + 6.0, z + 55.2) < 4.2) return false; // Tower mossy stairs approach
+    if (Math.hypot(x + 6.0, z + 55.2) < 4.2) return false;
     if (Math.hypot(x - cragCaveX, z - cragCaveZ) < 7.0) return false;
     if (Math.hypot(x - weepCaveX, z - weepCaveZ) < 7.0) return false;
     if (Math.hypot(x - ancCaveX, z - ancCaveZ) < 7.0) return false;
     if (Math.hypot(x - citGateX, z - citGateZ) < 7.8) return false;
     if (Math.hypot(x - BRIDGE_CENTER.x, z - BRIDGE_CENTER.z) < 5.4) return false;
     if (Math.hypot(x - 45.5, z - 14.5) < 5.0) return false;
+    if (Math.hypot(x - HIGHLAND_RUIN_CENTER.x, z - HIGHLAND_RUIN_CENTER.z) < 8.2) return false;
+    if (Math.hypot(x - WAYSTATION_CENTER.x, z - WAYSTATION_CENTER.z) < 7.8) return false;
+    if (Math.hypot(x - STONEFALL_CIRCLE_CENTER.x, z - STONEFALL_CIRCLE_CENTER.z) < 10.0) return false;
     for (let i = 0; i < smallGlades.length; i++) {
       const g = smallGlades[i];
       if (Math.hypot(x - g.x, z - g.z) < g.r) return false;
@@ -946,17 +1230,17 @@ export function buildForestWorld(
   const allTrees: PlacedTreeRecord[] = [];
 
   const targetCounts: Record<PlacedTreeRecord['species'], number> = {
-    tall0: 185,
-    tall1: 245,
-    ancient0: 85,
-    ancient1: 80,
-    broad0: 130,
-    broad1: 145,
-    twist0: 70,
-    twist1: 65,
-    rooted: 95,
-    dead0: 65,
-    dead1: 60,
+    tall0: 320,
+    tall1: 410,
+    ancient0: 155,
+    ancient1: 145,
+    broad0: 215,
+    broad1: 235,
+    twist0: 120,
+    twist1: 110,
+    rooted: 160,
+    dead0: 105,
+    dead1: 95,
   };
 
   const speciesOrder: PlacedTreeRecord['species'][] = [
@@ -973,7 +1257,7 @@ export function buildForestWorld(
     'dead1',
   ];
 
-  // Dense clusters first (grove cores) then general woodland fill
+  // Dense clusters first (grove cores) then general woodland fill across 168m territory
   for (const species of speciesOrder) {
     const target = targetCounts[species];
     let tries = 0;
@@ -989,29 +1273,35 @@ export function buildForestWorld(
     while (speciesBuckets[species].length < target && tries < target * 30) {
       tries++;
       const angle = rand() * Math.PI * 2;
-      const radius = 8.0 + Math.pow(rand(), 0.78) * 84.5;
+      const radius = 8.0 + Math.pow(rand(), 0.72) * 156.0;
       const x = Math.cos(angle) * radius;
       const z = Math.sin(angle) * radius;
       if (!isClearOfFeatures(x, z, minPath, minWater, true)) continue;
       if (isInTowerSightline(x, z)) continue;
 
+      const biome = biomeAt(x, z);
       const grove = groveDensityAt(x, z);
       const slope = groundSlopeAt(x, z);
-      const nearWater = streamDistanceAt(x, z) < 5.5 || Math.hypot(x - BOG_CENTER.x, z - BOG_CENTER.z) < 9.5;
+      const nearWater =
+        biome === 'wetland' ||
+        biome === 'riverbank' ||
+        streamDistanceAt(x, z) < 5.5 ||
+        Math.hypot(x - BOG_CENTER.x, z - BOG_CENTER.z) < 9.5;
 
-      // Ecological placement bias: ancient pines in deeper groves, broadleafs near edges/hollows,
-      // rooted & twisted trees near slopes/streams/bog
+      // Ecological placement bias by biome
+      if (biome === 'rocky' && rand() > 0.32) continue;
       if (isAncient && rand() > 0.34 + grove * 0.66) continue;
-      if ((isRooted || isTwist) && !nearWater && slope < 0.2 && rand() > 0.48 + grove * 0.35) continue;
+      if ((isRooted || isTwist) && !nearWater && slope < 0.2 && rand() > 0.45 + grove * 0.35) continue;
+      if (biome === 'wetland' && !(isDead || isRooted || isTwist) && rand() > 0.3) continue;
       if (!isDead && rand() > 0.48 + grove * 0.62) continue;
 
       const spacing = isAncient
-        ? 2.65 - grove * 0.85
+        ? 2.8 - grove * 0.85
         : isBroad
-          ? 2.25 - grove * 0.7
+          ? 2.4 - grove * 0.7
           : isDead
-            ? 1.75
-            : 1.95 - grove * 0.68;
+            ? 1.9
+            : 2.15 - grove * 0.65;
 
       if (treeGrid.hasNeighborWithin(x, z, spacing)) continue;
 
@@ -1163,7 +1453,7 @@ export function buildForestWorld(
         z = host.z + Math.sin(a) * d;
       } else {
         const a = rand() * Math.PI * 2;
-        const rad = 6.2 + Math.pow(rand(), 0.78) * 83;
+        const rad = 6.2 + Math.pow(rand(), 0.72) * 155;
         x = Math.cos(a) * rad;
         z = Math.sin(a) * rad;
       }
@@ -1196,10 +1486,10 @@ export function buildForestWorld(
     scalableMeshes.push({ inst: fInst, maxCount: placed });
   }
 
-  populateSaplings(270, sapling0Geo, pineNeedleMat, pinePalette);
-  populateSaplings(250, sapling1Geo, broadleafMat, broadleafPalette);
+  populateSaplings(360, sapling0Geo, pineNeedleMat, pinePalette);
+  populateSaplings(330, sapling1Geo, broadleafMat, broadleafPalette);
 
-  // 17. Dense Multi-Lobe Forest Bushes & Impassable Thickets (530 bushes across 2 variants)
+  // 17. Dense Multi-Lobe Forest Bushes & Impassable Thickets across 168m
   const bush0Geo = buildBushGeometry(0);
   const bush1Geo = buildBushGeometry(1);
   const bushGrid = new SpatialGrid2D(2.5);
@@ -1221,7 +1511,7 @@ export function buildForestWorld(
         z = host.z + Math.sin(a) * d;
       } else {
         const a = rand() * Math.PI * 2;
-        const rad = 6.0 + rand() * 83;
+        const rad = 6.0 + Math.pow(rand(), 0.72) * 155;
         x = Math.cos(a) * rad;
         z = Math.sin(a) * rad;
       }
@@ -1253,8 +1543,8 @@ export function buildForestWorld(
     scene.add(inst);
   }
 
-  populateBushes(290, bush0Geo, true);
-  populateBushes(240, bush1Geo, false);
+  populateBushes(420, bush0Geo, true);
+  populateBushes(340, bush1Geo, false);
 
   // 18. Geological Variety: Irregular Boulders, Embedded Mossy Slabs, Crag Stones & Scattered Scree
   const rock0Geo = buildRockVariantGeometry(0);
@@ -1290,7 +1580,7 @@ export function buildForestWorld(
         z = anchor.z + Math.sin(a) * d;
       } else {
         const a = rand() * Math.PI * 2;
-        const rad = 5.5 + rand() * 83;
+        const rad = 5.5 + Math.pow(rand(), 0.74) * 156;
         x = Math.cos(a) * rad;
         z = Math.sin(a) * rad;
       }
@@ -1308,6 +1598,9 @@ export function buildForestWorld(
       if (Math.hypot(x - ancCaveX, z - ancCaveZ) < 6.4) continue;
       if (Math.hypot(x - citGateX, z - citGateZ) < 7.2) continue;
       if (Math.hypot(x + 6.0, z + 55.2) < 3.5) continue;
+      if (Math.hypot(x - HIGHLAND_RUIN_CENTER.x, z - HIGHLAND_RUIN_CENTER.z) < 7.5) continue;
+      if (Math.hypot(x - WAYSTATION_CENTER.x, z - WAYSTATION_CENTER.z) < 7.2) continue;
+      if (Math.hypot(x - STONEFALL_CIRCLE_CENTER.x, z - STONEFALL_CIRCLE_CENTER.z) < 9.2) continue;
 
       const s = minScale + rand() * (maxScale - minScale);
       const sx = s * (0.82 + rand() * 0.55);
@@ -1339,14 +1632,14 @@ export function buildForestWorld(
     if (scalable) scalableMeshes.push({ inst, maxCount: placed });
   }
 
-  populateRocks(115, rock0Geo, 0.72, 1.55, 2.35, true, 0.55);
-  populateRocks(145, rock1Geo, 0.65, 1.45, 2.1, true, 0.78);
-  populateRocks(75, rock2Geo, 0.82, 1.48, 2.45, true, 0.65);
-  populateRocks(340, rock0Geo, 0.18, 0.42, 1.35, false, 0.5, true);
+  populateRocks(180, rock0Geo, 0.72, 1.65, 2.35, true, 0.55);
+  populateRocks(210, rock1Geo, 0.65, 1.5, 2.1, true, 0.78);
+  populateRocks(115, rock2Geo, 0.82, 1.55, 2.45, true, 0.65);
+  populateRocks(460, rock0Geo, 0.18, 0.42, 1.35, false, 0.5, true);
 
-  // 19. Decaying Mossy Logs (with branch stubs & moss caps), Stumps, Soil Roots, Fallen Branches & Moss Mounds
+  // 19. Decaying Mossy Logs, Stumps, Soil Roots, Fallen Branches & Moss Mounds across 168m
   const decayLogGeo = buildDecayingLogGeometries();
-  const decayLogCount = 64;
+  const decayLogCount = 96;
   const decayWoodInst = new THREE.InstancedMesh(decayLogGeo.woodGeo, barkMat, decayLogCount);
   const decayMossInst = new THREE.InstancedMesh(decayLogGeo.mossGeo, mossMat, decayLogCount);
   decayWoodInst.castShadow = true;
@@ -1355,10 +1648,10 @@ export function buildForestWorld(
 
   let dlPlaced = 0;
   let dlTries = 0;
-  while (dlPlaced < decayLogCount && dlTries < 850) {
+  while (dlPlaced < decayLogCount && dlTries < 1200) {
     dlTries++;
     const a = rand() * Math.PI * 2;
-    const rad = 11 + rand() * 76;
+    const rad = 11 + Math.pow(rand(), 0.74) * 148;
     const x = Math.cos(a) * rad;
     const z = Math.sin(a) * rad;
     if (!isClearOfFeatures(x, z, 3.3, 2.7)) continue;
@@ -1394,16 +1687,16 @@ export function buildForestWorld(
   decayMossInst.computeBoundingSphere();
   scene.add(decayWoodInst, decayMossInst);
 
-  // Mossy Stumps (68 scattered in groves & glade borders)
+  // Mossy Stumps (105 scattered in groves & glade borders)
   const stumpGeo = new THREE.CylinderGeometry(0.24, 0.44, 0.72, 6);
   stumpGeo.translate(0, 0.32, 0);
-  const stumpInst = new THREE.InstancedMesh(stumpGeo, barkMat, 68);
+  const stumpInst = new THREE.InstancedMesh(stumpGeo, barkMat, 105);
   let sPlaced = 0;
   let sTries = 0;
-  while (sPlaced < 68 && sTries < 750) {
+  while (sPlaced < 105 && sTries < 1100) {
     sTries++;
     const a = rand() * Math.PI * 2;
-    const rad = 6.5 + rand() * 82;
+    const rad = 6.5 + Math.pow(rand(), 0.74) * 155;
     const x = Math.cos(a) * rad;
     const z = Math.sin(a) * rad;
     if (pathDistanceAt(x, z) < 2.25 || streamDistanceAt(x, z) < 2.3) continue;
@@ -1423,7 +1716,7 @@ export function buildForestWorld(
   stumpInst.computeBoundingSphere();
   scene.add(stumpInst);
 
-  // Emerging Gnarled Soil Roots anchored around real trees & slopes (210 instances)
+  // Emerging Gnarled Soil Roots anchored around real trees & slopes
   const root0Geo = buildSoilRootGeometry(0);
   const root1Geo = buildSoilRootGeometry(1);
   function populateSoilRoots(targetCount: number, geo: THREE.BufferGeometry) {
@@ -1454,18 +1747,18 @@ export function buildForestWorld(
     scene.add(inst);
     scalableMeshes.push({ inst, maxCount: placed });
   }
-  populateSoilRoots(175, root0Geo);
-  populateSoilRoots(165, root1Geo);
+  populateSoilRoots(240, root0Geo);
+  populateSoilRoots(220, root1Geo);
 
-  // Fallen Forest Branches (260 scattered twigs/limbs)
+  // Fallen Forest Branches (380 scattered twigs/limbs)
   const branchGeo = buildFallenBranchGeometry();
-  const branchInst = new THREE.InstancedMesh(branchGeo, deadBarkMat, 260);
+  const branchInst = new THREE.InstancedMesh(branchGeo, deadBarkMat, 380);
   let brPlaced = 0;
   let brTries = 0;
-  while (brPlaced < 260 && brTries < 1200) {
+  while (brPlaced < 380 && brTries < 1600) {
     brTries++;
     const a = rand() * Math.PI * 2;
-    const rad = 5.5 + rand() * 82;
+    const rad = 5.5 + Math.pow(rand(), 0.75) * 155;
     const x = Math.cos(a) * rad;
     const z = Math.sin(a) * rad;
     if (pathDistanceAt(x, z) < 1.55 || streamDistanceAt(x, z) < 1.7) continue;
@@ -1705,7 +1998,7 @@ export function buildForestWorld(
         z = host.z + Math.sin(a) * d;
       } else {
         const angle = rand() * Math.PI * 2;
-        const rad = 1.6 + Math.pow(rand(), 0.74) * 86;
+        const rad = 1.6 + Math.pow(rand(), 0.72) * 158;
         x = Math.cos(angle) * rad;
         z = Math.sin(angle) * rad;
       }
@@ -1714,6 +2007,9 @@ export function buildForestWorld(
       if (pDist < minPathDist) continue;
       if (Math.hypot(x - BOG_CENTER.x, z - BOG_CENTER.z) < (waterLover ? 4.0 : 4.6)) continue;
       if (Math.hypot(x - POND_CENTER.x, z - POND_CENTER.z) < (waterLover ? 5.9 : 6.4)) continue;
+      if (Math.hypot(x - FEN_NORTH_CENTER.x, z - FEN_NORTH_CENTER.z) < (waterLover ? 6.8 : 7.4)) continue;
+      if (Math.hypot(x - MOOR_POND_CENTER.x, z - MOOR_POND_CENTER.z) < (waterLover ? 7.0 : 7.8)) continue;
+      if (Math.hypot(x - CASCADE_CENTER.x, z - CASCADE_CENTER.z) < (waterLover ? 5.6 : 6.4)) continue;
       if (streamDistanceAt(x, z) < (waterLover ? 1.35 : 1.55)) continue;
       if (Math.hypot(x - cabinX, z - cabinZ) < 6.5) continue;
       if (Math.hypot(x - cottageX, z - cottageZ) < 5.0) continue;
@@ -1744,17 +2040,17 @@ export function buildForestWorld(
     scalableMeshes.push({ inst, maxCount: placed });
   }
 
-  populateBillboards(textures.grassSprite, 3200, 0.92, 0.74, 0.14, 1.28, false, false);
-  populateBillboards(textures.fernSprite, 1750, 1.22, 0.96, 0.11, 1.48, true, false);
-  populateBillboards(textures.tallPlantSprite, 820, 1.22, 1.45, 0.13, 1.62, false, true);
-  populateBillboards(textures.brambleSprite, 780, 1.35, 1.02, 0.06, 1.9, true, false);
+  populateBillboards(textures.grassSprite, 3800, 0.92, 0.74, 0.14, 1.28, false, false);
+  populateBillboards(textures.fernSprite, 2100, 1.22, 0.96, 0.11, 1.48, true, false);
+  populateBillboards(textures.tallPlantSprite, 1050, 1.22, 1.45, 0.13, 1.62, false, true);
+  populateBillboards(textures.brambleSprite, 950, 1.35, 1.02, 0.06, 1.9, true, false);
 
-  // 22. GPU-Animated Mist Particles spread across the dense ancient forest
-  const mistCount = 210;
+  // 22. GPU-Animated Mist Particles spread across the expanded 162m Thornvale valley
+  const mistCount = 320;
   const mistPositions = new Float32Array(mistCount * 3);
   for (let i = 0; i < mistCount; i++) {
     const a = rand() * Math.PI * 2;
-    const r = rand() * 88;
+    const r = Math.pow(rand(), 0.72) * 160;
     const x = Math.cos(a) * r;
     const z = Math.sin(a) * r;
     const y = groundHeightAt(x, z) + 0.55 + rand() * 3.4;
@@ -1866,6 +2162,20 @@ export function buildForestWorld(
     mistPoints.visible = clamped > 0.3;
   };
 
+  const updateVisibility = (playerX: number, playerZ: number, elapsed: number) => {
+    for (let i = 0; i < zoneChunks.length; i++) {
+      const zc = zoneChunks[i];
+      const dx = playerX - zc.cx;
+      const dz = playerZ - zc.cz;
+      zc.group.visible = dx * dx + dz * dz <= zc.maxDistSq;
+    }
+    if (waterfallChunk.visible) {
+      const pulse = 0.5 + 0.5 * Math.sin(elapsed * 6.5);
+      waterfallFoam.scale.set(0.95 + pulse * 0.14, 1.0, 0.95 + pulse * 0.14);
+      cascadeSheetMat.opacity = 0.66 + pulse * 0.14;
+    }
+  };
+
   return {
     colliders,
     boxColliders,
@@ -1876,7 +2186,8 @@ export function buildForestWorld(
     mistPoints,
     crowGroup,
     setDensityScale,
+    updateVisibility,
   };
 }
 
-const PLAYABLE_CHECK_RADIUS = 94;
+const PLAYABLE_CHECK_RADIUS = PLAYABLE_BOUNDS_RADIUS;

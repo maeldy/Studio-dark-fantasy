@@ -86,6 +86,30 @@ export interface WalkableSurface {
   yStart: number;
   yEnd: number;
   rampAxis?: 'x' | 'z';
+  stepCount?: number;
+  stairDir?: 1 | -1;
+}
+
+export type DevTeleportCategory =
+  | 'Overworld Landmarks'
+  | 'Outer Regions'
+  | 'Dwellings'
+  | 'Towers & Fortifications'
+  | 'Ruins & Sanctuaries'
+  | 'Caves'
+  | 'Dungeons';
+
+export interface DevTeleportPoint {
+  id: string;
+  name: string;
+  category: DevTeleportCategory;
+  subtitle: string;
+  targetEnv: 'overworld' | InteriorId;
+  x: number;
+  y?: number;
+  z: number;
+  yaw?: number;
+  zoneId?: string;
 }
 
 export interface InteriorInteractable {
@@ -94,9 +118,10 @@ export interface InteriorInteractable {
   y: number;
   z: number;
   radius: number;
-  kind: 'door' | 'brazier' | 'relic' | 'secret';
+  kind: 'door' | 'brazier' | 'relic' | 'secret' | 'found_item';
   label: string;
   completedLabel?: string;
+  isAvailable?: () => boolean;
   onActivate: () => string | void;
 }
 
@@ -140,7 +165,80 @@ export interface InteriorInstance {
 export interface InteractPrompt {
   id: string;
   label: string;
-  kind: 'portal' | 'door' | 'brazier' | 'relic' | 'secret';
+  kind: 'portal' | 'door' | 'brazier' | 'relic' | 'secret' | 'npc' | 'resource' | 'found_item';
+}
+
+export type ItemCategory =
+  | 'natural_resource'
+  | 'material'
+  | 'plant'
+  | 'food'
+  | 'misc'
+  | 'special'
+  | 'weapon'
+  | 'armor'
+  | 'tool'
+  | 'equipment'
+  | 'crafted'
+  | 'quest';
+
+export type ItemIconKey =
+  | 'branch'
+  | 'deadwood'
+  | 'log'
+  | 'fiber'
+  | 'liana'
+  | 'root'
+  | 'bark'
+  | 'resin'
+  | 'stone'
+  | 'flint'
+  | 'coal'
+  | 'ore_iron'
+  | 'ore_copper'
+  | 'ore_tin'
+  | 'mineral_amber'
+  | 'mineral_moon'
+  | 'mushroom'
+  | 'glowcap'
+  | 'berries'
+  | 'herb'
+  | 'flower'
+  | 'medicinal'
+  | 'seeds'
+  | 'edible_root'
+  | 'feather'
+  | 'bone'
+  | 'hide'
+  | 'fur'
+  | 'fang'
+  | 'coin'
+  | 'pottery'
+  | 'book'
+  | 'relic'
+  | 'seal'
+  | 'compass';
+
+export type ResourceToolRequirement = 'none' | 'axe' | 'pickaxe';
+
+export interface ItemDefinition {
+  id: string;
+  name: string;
+  category: ItemCategory;
+  description: string;
+  maxStack: number;
+  icon: ItemIconKey;
+  rarity: 'common' | 'uncommon' | 'rare' | 'unique';
+  isUnique?: boolean;
+}
+
+export interface InventorySlot {
+  itemId: string;
+  quantity: number;
+}
+
+export interface ResourceNodeStateEntry {
+  depletedAt: number;
 }
 
 export interface ThornvaleSaveState {
@@ -150,6 +248,107 @@ export interface ThornvaleSaveState {
   openedDoors: Record<string, boolean>;
   litBraziers: Record<string, boolean>;
   collectedRelics: Record<string, boolean>;
+  defeatedMonsters?: Record<string, number>;
+  metNpcs?: Record<string, boolean>;
+  inventory: (InventorySlot | null)[];
+  resourceStates: Record<string, ResourceNodeStateEntry>;
+  collectedFoundItems: Record<string, boolean>;
+}
+
+export type EntityCategory = 'animal' | 'creature' | 'monster' | 'npc';
+
+export type AnimalSpecies =
+  | 'stag'
+  | 'doe'
+  | 'roe_deer'
+  | 'boar'
+  | 'wolf'
+  | 'bear'
+  | 'rabbit'
+  | 'fox'
+  | 'squirrel'
+  | 'badger'
+  | 'hedgehog'
+  | 'mouse'
+  | 'crow'
+  | 'rook'
+  | 'owl'
+  | 'barn_owl'
+  | 'songbird'
+  | 'eagle';
+
+export type CreatureSpecies =
+  | 'forest_spirit'
+  | 'tree_sprite'
+  | 'moss_dryad'
+  | 'pale_stag'
+  | 'stone_guardian'
+  | 'moss_golem'
+  | 'fog_apparition'
+  | 'wisp_entity'
+  | 'shadow_stalker';
+
+export type MonsterSpecies =
+  | 'dire_wolf'
+  | 'thorn_fiend'
+  | 'night_prowler'
+  | 'animated_skeleton'
+  | 'ruin_wraith'
+  | 'hollow_husk'
+  | 'giant_spider'
+  | 'cave_crawler'
+  | 'stone_colossus'
+  | 'temple_warden';
+
+export type NpcRole =
+  | 'traveler'
+  | 'merchant'
+  | 'hunter'
+  | 'woodcutter'
+  | 'hermit'
+  | 'guard'
+  | 'adventurer'
+  | 'pilgrim'
+  | 'villager'
+  | 'keeper';
+
+export type AnyEntitySpecies =
+  | AnimalSpecies
+  | CreatureSpecies
+  | MonsterSpecies
+  | NpcRole;
+
+export type MonsterAiState =
+  | 'rest'
+  | 'patrol'
+  | 'detect'
+  | 'alert'
+  | 'chase'
+  | 'attack'
+  | 'disengage'
+  | 'return';
+
+export interface ActiveDialogue {
+  npcId: string;
+  speakerName: string;
+  speakerTitle: string;
+  role: NpcRole;
+  lines: string[];
+  lineIndex: number;
+}
+
+export interface PlayerVitals {
+  hp: number;
+  maxHp: number;
+  inCombat: boolean;
+  hurtFlash: number;
+}
+
+export interface EcosystemStats {
+  activeAnimals: number;
+  activeCreatures: number;
+  activeMonsters: number;
+  activeNpcs: number;
 }
 
 export interface TouchMoveInput {
@@ -168,19 +367,30 @@ export interface EngineCallbacks {
   onDiscovery?: (placeName: string, discoveredCount: number, totalCount: number) => void;
   onStatusMessage?: (message: string | null) => void;
   onSaveStateChange?: (state: ThornvaleSaveState) => void;
+  onDialogueChange?: (dialogue: ActiveDialogue | null) => void;
+  onPlayerVitalsChange?: (vitals: PlayerVitals) => void;
+  onDevModeChange?: (enabled: boolean) => void;
 }
 
 export interface WandererRig {
   root: THREE.Group;
   bodyPivot: THREE.Group;
+  pelvisPivot: THREE.Group;
   torso: THREE.Group;
+  neckPivot: THREE.Group;
   headPivot: THREE.Group;
   cape: THREE.Mesh;
   leftArmPivot: THREE.Group;
+  leftForearmPivot: THREE.Group;
   rightArmPivot: THREE.Group;
+  rightForearmPivot: THREE.Group;
   leftLegPivot: THREE.Group;
+  leftKneePivot: THREE.Group;
   rightLegPivot: THREE.Group;
+  rightKneePivot: THREE.Group;
   lanternPivot: THREE.Group;
   lanternLight: THREE.PointLight;
   contactShadow: THREE.Mesh;
+  drawnSwordGroup: THREE.Group;
+  sheathedSwordGroup: THREE.Group;
 }

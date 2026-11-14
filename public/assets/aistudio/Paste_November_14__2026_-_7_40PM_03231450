@@ -1,0 +1,855 @@
+# PROMPT 3 — CORRECTIONS TECHNIQUES, MODE DÉVELOPPEUR ET ANIMATIONS
+
+## OBJECTIF GÉNÉRAL
+
+Ce troisième grand développement doit permettre de consolider les éléments déjà créés dans THORNVALE et d'améliorer considérablement la qualité des déplacements et des animations.
+
+Le travail est divisé en quatre grandes parties :
+
+1. Corriger les problèmes de collisions, de sols, d'escaliers et de déplacements dans les infrastructures existantes.
+2. Créer un véritable mode développeur permettant de se téléporter dans les différents lieux du monde sans affecter la progression normale.
+3. Améliorer les animations et les mouvements du personnage principal.
+4. Ajouter et améliorer les animations des animaux, des créatures fantastiques, des monstres et des PNJ.
+
+**CONSIGNES FONDAMENTALES :**
+
+- Travaille directement sur le projet THORNVALE existant.
+- Ne recommence surtout pas le jeu depuis zéro.
+- Ne supprime pas les constructions, les personnages, les animaux, les créatures ou les systèmes déjà développés.
+- Ne remplace pas les systèmes fonctionnels par des versions simplifiées.
+- Identifie les systèmes de déplacement, de collision, de physique et d'animation déjà présents avant de les modifier.
+- Corrige les problèmes à leur origine plutôt que de multiplier les solutions temporaires.
+- Respecte intégralement la direction artistique low-poly inspirée de la PS1.
+- Toutes les nouvelles fonctionnalités doivent être réellement fonctionnelles.
+- Ne crée pas de simples animations visuelles déconnectées des déplacements réels.
+- Effectue les quatre grandes parties dans l'ordre, sans demander de validation entre chacune.
+- Vérifie le fonctionnement des modifications avant de terminer.
+
+---
+
+# PARTIE 1 — CORRECTION DES COLLISIONS ET DES DÉPLACEMENTS DANS LE MONDE
+
+## 1.1. Corriger les collisions des escaliers
+
+Il existe actuellement un problème récurrent avec les escaliers présents dans plusieurs constructions du monde.
+
+Par exemple, dans Greywatch Tower, le personnage semble traverser les escaliers au lieu de pouvoir marcher normalement dessus.
+
+Le personnage peut partiellement passer à travers la géométrie de l'escalier, se retrouver visuellement coupé par celui-ci et parfois être brusquement replacé sur l'escalier lorsqu'il saute.
+
+Ce comportement indique probablement un problème dans les collisions, la détection du sol ou le système de déplacement du personnage.
+
+Corrige ce problème à la source.
+
+**Résultats attendus :**
+
+- Le personnage doit pouvoir marcher normalement sur chaque marche.
+- Ses pieds doivent rester correctement positionnés sur la surface des marches.
+- Il ne doit plus traverser les escaliers.
+- Il ne doit plus être partiellement englouti dans leur géométrie.
+- Il ne doit plus être téléporté ou repositionné brutalement lorsqu'il saute dessus.
+- La détection du sol doit fonctionner correctement pendant toute l'ascension et la descente.
+- Les collisions doivent rester cohérentes avec la hauteur réelle de chaque marche.
+
+Vérifie également que les escaliers sont correctement intégrés au système de collision général et qu'ils ne sont pas simplement des éléments décoratifs sans surface physique adaptée.
+
+Applique cette correction à tous les escaliers du monde, et pas uniquement à Greywatch Tower.
+
+## 1.2. Améliorer la géométrie et l'ergonomie des escaliers
+
+Certains escaliers sont actuellement mal orientés ou se terminent trop près d'un mur.
+
+Le personnage peut alors arriver en haut d'un escalier sans pouvoir continuer naturellement son déplacement. Il doit se coller au mur, changer brutalement de direction ou effectuer une manœuvre peu pratique.
+
+Revois leur conception lorsque cela est nécessaire.
+
+Les escaliers doivent :
+- Déboucher sur un espace réellement accessible.
+- Être correctement orientés par rapport à l'étage supérieur.
+- Posséder une largeur suffisante pour permettre au personnage de circuler.
+- Ne pas se terminer directement contre un mur.
+- Ne pas obliger le joueur à effectuer des mouvements anormaux pour continuer.
+- Être correctement raccordés aux sols des étages.
+
+Lorsque la configuration architecturale le nécessite, tu peux modifier leur trajectoire.
+
+Par exemple :
+- Effectuer une légère rotation sur la dernière partie.
+- Ajouter un petit palier intermédiaire.
+- Faire tourner l'escalier autour d'un axe.
+- Utiliser une forme légèrement hélicoïdale ou un petit colimaçon.
+- Revoir la position de l'escalier dans la pièce.
+
+Ne modifie pas inutilement les escaliers qui fonctionnent déjà correctement.
+
+L'objectif est de conserver l'identité architecturale des constructions tout en rendant leur circulation parfaitement naturelle.
+
+## 1.3. Corriger les entrées et les seuils surélevés
+
+Certaines entrées de bâtiments possèdent des marches, des seuils ou des plateformes surélevées difficiles à franchir.
+
+Un exemple particulier est l'entrée en pierre de Mossy Bastion Ruins.
+
+Le personnage doit actuellement sauter pour accéder à cette entrée, alors qu'il devrait pouvoir y monter normalement.
+
+Corrige les différences de hauteur trop importantes ou les transitions mal conçues.
+
+Les entrées doivent :
+- Être accessibles à pied lorsque leur architecture le permet.
+- Posséder des marches adaptées si elles sont surélevées.
+- Avoir des transitions cohérentes entre le terrain extérieur et le sol intérieur.
+- Ne pas provoquer de blocage du personnage.
+- Ne pas nécessiter de saut artificiel pour franchir une entrée ordinaire.
+
+Si nécessaire, ajoute de petites marches, une pente ou modifie légèrement la géométrie de l'entrée.
+
+Ne supprime pas les différences de hauteur architecturales intéressantes : adapte plutôt leur accessibilité.
+
+## 1.4. Corriger les collisions des sols intérieurs et extérieurs
+
+Il existe plusieurs endroits dans le monde où les collisions du sol sont incorrectes.
+
+Le personnage peut notamment s'enfoncer partiellement dans le sol, traverser certaines surfaces ou se retrouver avec une partie du corps sous le terrain.
+
+Ces problèmes apparaissent aussi bien à l'extérieur des constructions qu'à l'intérieur.
+
+Inspecte les sols de toutes les infrastructures existantes :
+- Maisons.
+- Tours.
+- Ruines.
+- Sanctuaires.
+- Grottes.
+- Donjons.
+- Escaliers.
+- Plateformes.
+- Passages entre les différentes pièces.
+- Terrains extérieurs autour des bâtiments.
+
+Corrige les problèmes de collision et de détection du sol.
+
+**Comportement attendu :**
+
+- Les pieds du personnage doivent rester au-dessus de la surface du sol.
+- Le personnage ne doit jamais traverser une plateforme solide.
+- Les sols intérieurs doivent être correctement raccordés aux murs et aux portes.
+- Les surfaces inclinées doivent être correctement détectées.
+- Les transitions entre différentes hauteurs doivent fonctionner.
+- Les collisions ne doivent pas provoquer de repositionnement brutal.
+- Les objets solides doivent empêcher le personnage de passer à travers eux.
+
+Vérifie également les éventuelles différences entre la géométrie visible et les géométries utilisées pour les collisions.
+
+La surface physique doit correspondre correctement à la surface visible.
+
+## 1.5. Fiabiliser le système de saut
+
+Le saut actuel semble parfois insuffisant ou imprévisible pour franchir certains obstacles.
+
+Vérifie le fonctionnement général du saut.
+
+Améliore notamment :
+- La hauteur de saut.
+- La durée de l'impulsion.
+- La détection du moment où le personnage quitte le sol.
+- La détection du moment où il atterrit.
+- La gestion des collisions pendant le saut.
+- La détection des plateformes et des escaliers.
+- Le comportement lorsque le personnage saute sur une surface surélevée.
+
+Le saut doit rester naturel et cohérent avec les proportions du personnage.
+
+Ne rends pas le saut excessivement puissant pour compenser des problèmes de collision.
+
+Il faut corriger les obstacles et les collisions plutôt que permettre au joueur de franchir artificiellement tous les problèmes avec un saut exagéré.
+
+## 1.6. Vérifier les collisions générales du monde
+
+Profite de cette phase pour vérifier les collisions des autres éléments importants.
+
+Le personnage ne doit pas :
+- Traverser les murs.
+- Passer à travers les portes fermées.
+- Traverser les rochers solides.
+- S'enfoncer dans les plateformes.
+- Se retrouver bloqué dans les coins.
+- Traverser les constructions.
+- Être projeté brutalement par une collision incorrecte.
+
+Vérifie également que les collisions ne sont pas trop larges ou trop éloignées des objets visibles.
+
+Évite les situations où le personnage semble heurter un obstacle invisible.
+
+## 1.7. Préserver les éléments déjà fonctionnels
+
+Certaines constructions possèdent déjà des interactions et des fonctionnalités qui fonctionnent correctement.
+
+Par exemple, Edward Cottage possède des interactions que je souhaite conserver.
+
+Ne cherche pas à réécrire ces systèmes dans cette phase.
+
+Concentre-toi sur les problèmes physiques et techniques décrits précédemment.
+
+Ne profite pas de cette correction pour modifier les dialogues, la décoration, les interactions ou l'apparence des constructions.
+
+---
+
+# PARTIE 2 — CRÉATION D'UN VÉRITABLE MODE DÉVELOPPEUR
+
+## 2.1. Objectif du mode développeur
+
+Ajoute un mode développeur accessible depuis les paramètres du jeu.
+
+Ce mode est destiné à faciliter le développement et les tests de THORNVALE.
+
+Il doit permettre de se déplacer rapidement dans le monde, de rejoindre instantanément les constructions et de vérifier les modifications apportées au jeu.
+
+Il ne doit cependant jamais affecter la progression normale du joueur.
+
+Il s'agit d'un outil de développement intégré au jeu, pas d'un système de progression ou d'une fonctionnalité destinée à l'exploration classique.
+
+## 2.2. Activation et désactivation
+
+Ajoute une option dans les paramètres du jeu :
+
+**Mode développeur : ACTIVÉ / DÉSACTIVÉ**
+
+Lorsque le joueur active cette option :
+- Le mode développeur est activé.
+- Une interface spécifique devient disponible.
+- Les fonctionnalités de développement sont accessibles.
+- La progression normale est temporairement isolée.
+
+Lorsque le joueur désactive cette option :
+- Le mode développeur est fermé.
+- Les modifications temporaires sont abandonnées.
+- Le joueur retrouve son état de progression normal.
+- La sauvegarde classique reste intacte.
+
+L'activation et la désactivation doivent être fiables, même si le joueur se trouve à l'intérieur d'un bâtiment ou dans une zone éloignée.
+
+## 2.3. Création d'un menu de téléportation
+
+La fonctionnalité principale du mode développeur est un système de téléportation vers les différents lieux du monde.
+
+Ajoute une interface permettant de consulter une liste des lieux disponibles.
+
+Cette liste doit automatiquement récupérer les lieux réellement présents dans le jeu.
+
+Elle doit notamment inclure les constructions existantes :
+- Hollowbark Homestead.
+- Greywatch Tower.
+- Mossy Bastion Ruins.
+- Sanctum of Whispering Roots.
+- Edward Cottage.
+- Toutes les autres infrastructures créées dans le Prompt 1.
+- Les futures constructions qui seront ajoutées ultérieurement.
+
+Ne limite pas le système à ces quelques exemples.
+
+Il doit être extensible et récupérer automatiquement les nouveaux lieux lorsque cela est possible.
+
+Organise la liste de manière claire, avec éventuellement plusieurs catégories :
+
+- Habitations.
+- Tours et fortifications.
+- Ruines.
+- Sanctuaires.
+- Grottes.
+- Donjons.
+- Autres lieux remarquables.
+
+Chaque lieu doit être identifiable par son nom.
+
+## 2.4. Fonctionnement de la téléportation
+
+Lorsque le joueur sélectionne un lieu dans la liste, il doit pouvoir cliquer sur une commande de téléportation.
+
+Le jeu doit alors :
+1. Identifier correctement les coordonnées du lieu.
+2. Charger la zone si elle n'est pas encore chargée.
+3. Déterminer un emplacement de téléportation accessible.
+4. Placer le personnage à cet emplacement.
+5. Réinitialiser correctement sa position physique et son état de déplacement.
+6. Éviter qu'il apparaisse à l'intérieur d'un mur, sous le sol ou dans un objet.
+7. Attendre que les collisions nécessaires soient disponibles avant de rendre le contrôle au joueur.
+
+La téléportation doit fonctionner pour les espaces extérieurs comme pour les intérieurs.
+
+Lorsqu'un bâtiment possède un intérieur séparé, il doit être possible de s'y téléporter directement si cet intérieur est disponible.
+
+Si un lieu possède plusieurs zones intéressantes, prévois la possibilité d'ajouter ultérieurement plusieurs points de téléportation pour ce lieu.
+
+## 2.5. Interface du mode développeur
+
+Crée une interface simple, lisible et adaptée à l'identité visuelle de THORNVALE.
+
+Elle doit notamment contenir :
+- Un indicateur visible signalant que le mode développeur est activé.
+- Une liste des lieux disponibles.
+- Un moyen de rechercher ou filtrer les lieux si la liste devient longue.
+- Une commande de téléportation.
+- Une commande permettant de revenir à la position normale du joueur.
+- Une commande permettant de fermer l'interface.
+
+L'interface doit rester discrète et ne pas masquer inutilement l'environnement.
+
+Elle doit fonctionner correctement sur tablette Android et sur ordinateur.
+
+Sur tablette, les boutons doivent être suffisamment grands pour être utilisés avec les doigts.
+
+Sur ordinateur, les commandes doivent être facilement accessibles avec la souris et le clavier.
+
+## 2.6. Séparation totale de la progression normale
+
+C'est la règle la plus importante de cette fonctionnalité.
+
+Le mode développeur ne doit jamais modifier la sauvegarde normale du joueur.
+
+Toutes les actions effectuées pendant son utilisation doivent être considérées comme temporaires.
+
+Exemples :
+- Si le joueur se téléporte dans une tour, cette téléportation ne doit pas modifier sa progression.
+- S'il explore un donjon, cette exploration ne doit pas être enregistrée dans la sauvegarde normale.
+- S'il ramasse des objets, ils ne doivent pas être conservés.
+- S'il modifie un état de jeu, cette modification ne doit pas être enregistrée dans la progression normale.
+- S'il déclenche des interactions, leurs conséquences ne doivent pas affecter la partie normale.
+- Si un monstre est éliminé, cela ne doit pas être conservé dans la progression normale.
+
+Pour cela, crée une véritable séparation entre les données de jeu normales et celles du mode développeur.
+
+Ne te contente pas de désactiver visuellement l'enregistrement.
+
+Les opérations effectuées en mode développeur doivent utiliser un environnement temporaire isolé de la sauvegarde principale.
+
+Lorsque le joueur désactive le mode développeur :
+- Abandonne l'état temporaire.
+- Restaure la progression normale.
+- Restaure les données importantes de la sauvegarde.
+- Évite toute écriture accidentelle dans les données normales.
+
+Si le joueur active le mode développeur pendant une partie en cours, conserve un état de référence permettant de retrouver exactement cette partie après sa désactivation.
+
+Si une erreur se produit pendant le mode développeur, elle ne doit pas corrompre la sauvegarde normale.
+
+## 2.7. Sécurité et fiabilité
+
+Prévois des protections contre les erreurs :
+- Ne jamais écraser la sauvegarde normale avec les données du mode développeur.
+- Ne pas enregistrer automatiquement les modifications temporaires.
+- Ne pas confondre les identifiants des deux environnements.
+- Ne pas laisser le mode développeur actif après un chargement normal inattendu.
+- Gérer correctement les changements de zone.
+- Gérer les erreurs de chargement lors d'une téléportation.
+
+Le système doit rester utilisable au fil des futures mises à jour du jeu.
+
+---
+
+# PARTIE 3 — AMÉLIORATION DES ANIMATIONS DU PERSONNAGE PRINCIPAL
+
+## 3.1. Objectif général
+
+Améliore considérablement les animations du personnage principal.
+
+Le personnage doit avoir l'air vivant et posséder des mouvements cohérents avec ses déplacements.
+
+Actuellement, il ne suffit pas que le modèle change de position pour donner l'impression qu'il marche.
+
+Les membres doivent réellement s'animer et le corps doit réagir aux mouvements.
+
+L'objectif est d'obtenir des animations fluides, naturelles et cohérentes avec l'univers de THORNVALE.
+
+## 3.2. Améliorer la structure du personnage
+
+Vérifie la structure du modèle 3D et de ses différentes parties.
+
+Lorsque cela est nécessaire, organise le personnage autour d'une structure articulée permettant d'animer correctement :
+
+- Le torse.
+- La tête.
+- Le cou.
+- Les épaules.
+- Les bras.
+- Les avant-bras.
+- Les mains.
+- Le bassin.
+- Les cuisses.
+- Les genoux.
+- Les jambes.
+- Les pieds.
+
+Les articulations doivent permettre des mouvements cohérents.
+
+Si le modèle actuel ne possède pas une structure suffisamment adaptée, améliore son système d'articulation sans détruire son apparence actuelle.
+
+Ne remplace pas automatiquement le modèle par un autre personnage.
+
+## 3.3. Animation de marche
+
+Crée ou améliore une véritable animation de marche.
+
+Pendant la marche :
+- Les jambes doivent alterner naturellement.
+- Les genoux doivent se plier.
+- Les pieds doivent se lever et se reposer sur le sol.
+- Les bras doivent accompagner les mouvements.
+- Le torse doit légèrement accompagner les déplacements.
+- La tête doit rester relativement stable.
+- Le corps doit avoir un mouvement vertical discret.
+
+La marche ne doit pas être une simple translation du personnage avec les jambes immobiles.
+
+Les mouvements doivent être synchronisés avec la vitesse réelle de déplacement.
+
+## 3.4. Animation de course
+
+Crée une animation de course distincte de la marche.
+
+La course doit présenter :
+- Une cadence plus rapide.
+- Des mouvements de jambes plus amples.
+- Une flexion plus importante des genoux.
+- Des mouvements de bras plus dynamiques.
+- Une légère inclinaison du torse vers l'avant.
+- Un mouvement vertical adapté à la course.
+
+Le personnage doit accélérer et ralentir de manière cohérente.
+
+Évite les changements instantanés entre une marche lente et une course rapide.
+
+## 3.5. Animation de saut et d'atterrissage
+
+Ajoute une animation de saut cohérente avec la physique du jeu.
+
+Le saut doit comprendre plusieurs phases :
+
+**Préparation :**
+- Légère flexion des jambes.
+- Petit mouvement du corps vers le bas.
+
+**Impulsion :**
+- Extension des jambes.
+- Mouvement du corps vers le haut.
+- Réaction naturelle des bras.
+
+**Phase aérienne :**
+- Position cohérente des jambes.
+- Légère adaptation des bras.
+- Corps correctement orienté.
+
+**Atterrissage :**
+- Flexion des genoux.
+- Absorption de l'impact.
+- Retour progressif à la posture normale.
+
+L'animation doit être synchronisée avec la véritable trajectoire physique du personnage.
+
+Le personnage ne doit pas terminer son animation de saut alors qu'il est encore dans les airs, ou inversement.
+
+## 3.6. Animation d'inactivité
+
+Lorsque le personnage reste immobile, il ne doit pas ressembler à une statue totalement figée.
+
+Ajoute de légers mouvements naturels :
+- Respiration.
+- Petits mouvements du torse.
+- Mouvements discrets de la tête.
+- Ajustements occasionnels de posture.
+- Légers mouvements des bras.
+
+Ces animations doivent rester très discrètes.
+
+Le personnage doit conserver une attitude calme et adaptée à l'ambiance contemplative du jeu.
+
+## 3.7. Animation de rotation et de changement de direction
+
+Lorsque le joueur change de direction :
+- Le corps doit pivoter correctement.
+- La tête doit rester cohérente avec l'orientation.
+- Les jambes doivent accompagner la rotation.
+- Les mouvements ne doivent pas provoquer de glissements excessifs.
+
+Évite les rotations instantanées qui donnent l'impression que le personnage pivote comme un objet rigide.
+
+Les changements de direction doivent être relativement fluides.
+
+## 3.8. Cohérence avec les équipements
+
+Si le personnage possède des vêtements, une cape, un sac ou des équipements visibles, vérifie leur comportement pendant les animations.
+
+Lorsque cela est possible :
+- Les capes doivent légèrement réagir aux mouvements.
+- Les vêtements doivent suivre les articulations.
+- Les sacs doivent rester correctement attachés.
+- Les armes portées doivent conserver une position cohérente.
+- Les accessoires ne doivent pas traverser excessivement le corps.
+
+Ne cherche pas à créer une simulation physique complexe pour chaque vêtement.
+
+Privilégie des animations simples, légères et visuellement convaincantes.
+
+## 3.9. Transitions entre les animations
+
+Toutes les animations doivent pouvoir s'enchaîner correctement.
+
+Exemples :
+- Inactivité vers marche.
+- Marche vers course.
+- Course vers arrêt.
+- Marche vers saut.
+- Saut vers atterrissage.
+- Atterrissage vers marche.
+- Course vers changement de direction.
+
+Les transitions doivent éviter :
+- Les mouvements brusques.
+- Les membres qui changent instantanément de position.
+- Les interruptions d'animation.
+- Les glissements du personnage.
+- Les déformations anormales du modèle.
+
+Utilise un système de transitions ou de mélange d'animations adapté au moteur existant.
+
+## 3.10. Synchronisation avec les commandes
+
+Les animations doivent être déclenchées en fonction des actions réelles du joueur.
+
+Vérifie notamment :
+- Les commandes de déplacement sur ordinateur.
+- Les commandes tactiles sur tablette.
+- La marche.
+- La course.
+- Le saut.
+- Les changements de direction.
+- Les arrêts.
+
+Ne crée pas de commandes supplémentaires inutiles.
+
+Conserve les contrôles déjà présents et adapte simplement les animations à leur fonctionnement.
+
+---
+
+# PARTIE 4 — ANIMATIONS DES ANIMAUX, CRÉATURES, MONSTRES ET PNJ
+
+## 4.1. Objectif général
+
+Améliore les animations des entités déjà présentes dans le monde.
+
+Les animaux, les créatures fantastiques, les monstres et les PNJ doivent posséder des mouvements cohérents avec leur apparence et leurs comportements.
+
+Il ne s'agit pas de refaire leurs modèles.
+
+**IMPORTANT :** conserve pour le moment les modèles, les proportions, les textures et les niveaux de détail actuellement présents.
+
+Ne cherche pas à rendre les animaux ou les personnages plus beaux, plus grands ou plus détaillés dans cette phase.
+
+Nous consacrerons une phase ultérieure à leur amélioration visuelle.
+
+La priorité actuelle est de rendre leurs mouvements crédibles.
+
+## 4.2. Animations des animaux
+
+Chaque catégorie animale doit posséder des animations adaptées à sa morphologie.
+
+**Cerfs, biches et chevreuils :**
+- Marche.
+- Course.
+- Arrêt.
+- Observation.
+- Mouvements de la tête.
+- Saut ou bond.
+- Réaction de fuite.
+
+**Sangliers :**
+- Marche.
+- Déplacement rapide.
+- Fouille du sol.
+- Mouvements de la tête.
+- Réaction agressive.
+- Charge si le comportement existe.
+
+**Loups et renards :**
+- Marche.
+- Course.
+- Trot.
+- Observation.
+- Reniflement.
+- Attaque si nécessaire.
+- Réaction de fuite.
+
+**Lapins et petits mammifères :**
+- Petits déplacements.
+- Sauts.
+- Repos.
+- Observation.
+- Fuite rapide.
+
+**Oiseaux :**
+- Marche ou petits sautillements.
+- Mouvements de la tête.
+- Battements d'ailes.
+- Décollage.
+- Vol.
+- Atterrissage.
+- Perchage sur une branche lorsque cela est possible.
+
+Chaque animal doit avoir des animations correspondant à sa propre anatomie.
+
+Ne donne pas simplement une animation quadrupède identique à toutes les espèces.
+
+## 4.3. Animations des créatures fantastiques
+
+Les créatures fantastiques doivent posséder des animations adaptées à leur apparence particulière.
+
+Exemples :
+
+**Esprits forestiers :**
+- Mouvements lents.
+- Flottement léger si leur conception le justifie.
+- Mouvements de tête.
+- Apparition et disparition si ce comportement existe déjà.
+
+**Créatures végétales :**
+- Déplacement lourd ou organique.
+- Mouvements des branches et des racines.
+- Déformation légère des éléments végétaux.
+- Réactions lentes.
+
+**Gardiens de pierre et golems :**
+- Mouvements lourds.
+- Déplacement lent.
+- Rotation du torse.
+- Mouvements imposants des bras.
+- Réactions physiques aux déplacements.
+
+Les animations doivent renforcer l'identité de chaque créature.
+
+Ne donne pas à toutes les créatures des mouvements humanoïdes identiques.
+
+## 4.4. Animations des monstres
+
+Les monstres doivent posséder des animations correspondant à leurs comportements et à leur système d'intelligence artificielle.
+
+Prévois notamment :
+- Repos.
+- Patrouille.
+- Déplacement.
+- Détection du joueur.
+- Alerte.
+- Poursuite.
+- Préparation d'une attaque.
+- Attaque.
+- Réaction lorsqu'ils subissent un impact.
+- Retour à l'état normal.
+- Mort si le système correspondant existe déjà.
+
+Les attaques doivent être synchronisées avec les comportements réels des monstres.
+
+Par exemple, un monstre ne doit pas infliger des dégâts alors que son animation montre encore une préparation d'attaque.
+
+Inversement, son attaque ne doit pas être visuellement terminée avant que son action soit réellement exécutée.
+
+Ne crée pas de nouveaux systèmes de combat dans ce prompt. Il s'agit uniquement d'améliorer les animations et leur synchronisation avec les comportements déjà existants.
+
+## 4.5. Animations des PNJ
+
+Les personnages non-joueurs doivent adopter des mouvements plus naturels.
+
+Prévois :
+- Marche.
+- Course lorsque nécessaire.
+- Inactivité.
+- Respiration.
+- Mouvements de tête.
+- Observation.
+- Rotation du corps.
+- Assise lorsque cette fonctionnalité existe.
+- Mouvements adaptés à leurs activités.
+
+Un PNJ qui reste près d'un feu de camp ne doit pas avoir exactement le même comportement qu'un garde en patrouille.
+
+Les animations doivent correspondre à leur activité.
+
+## 4.6. Synchronisation avec l'intelligence artificielle
+
+Les animations doivent être directement liées aux états comportementaux des entités.
+
+Par exemple :
+- Un animal qui fuit doit réellement passer à une animation de course.
+- Un monstre qui poursuit le joueur doit utiliser une animation adaptée à sa vitesse.
+- Un PNJ qui s'arrête doit passer à une animation d'inactivité.
+- Un oiseau qui décolle doit synchroniser ses battements d'ailes avec son mouvement.
+- Un gardien qui attaque doit synchroniser ses mouvements avec son action.
+
+Ne laisse pas les animations fonctionner indépendamment des comportements.
+
+## 4.7. Éviter les problèmes d'animation
+
+Vérifie que :
+- Les animaux ne glissent pas excessivement sur le sol.
+- Les pieds des personnages ne traversent pas les surfaces.
+- Les membres ne se déforment pas anormalement.
+- Les articulations restent cohérentes.
+- Les animations ne se bloquent pas.
+- Les entités ne restent pas dans une posture incorrecte.
+- Les transitions entre comportements fonctionnent.
+- Les animations ne continuent pas inutilement lorsque les entités sont déchargées.
+
+Les animations doivent également rester cohérentes avec les collisions et la physique corrigées dans la première partie.
+
+---
+
+# PARTIE 5 — OPTIMISATION GÉNÉRALE
+
+## 5.1. Préserver les performances
+
+L'ajout d'animations supplémentaires ne doit pas provoquer de ralentissements importants.
+
+Optimise les systèmes pour que les animations inutiles ne soient pas calculées lorsque les entités sont très éloignées du joueur.
+
+Utilise si nécessaire :
+- Des animations simplifiées à distance.
+- La suspension des animations hors de portée.
+- La réutilisation des ressources.
+- Une gestion optimisée des mises à jour physiques.
+- Une fréquence de calcul adaptée à la distance.
+
+Ne sacrifie pas inutilement la qualité visuelle des entités proches.
+
+## 5.2. Compatibilité tablette et ordinateur
+
+Le jeu doit continuer à fonctionner correctement sur :
+- Tablettes Android.
+- Ordinateurs.
+
+Vérifie notamment :
+- Les performances.
+- Les collisions.
+- Les commandes.
+- Les animations.
+- Les téléportations.
+- Les changements de zone.
+- L'affichage du mode développeur.
+
+Les interfaces doivent s'adapter aux différentes tailles d'écran.
+
+Conserve le fonctionnement en orientation paysage.
+
+## 5.3. Préserver les systèmes existants
+
+Vérifie que les corrections et animations ne détériorent pas :
+- Les environnements.
+- Les constructions.
+- Les intérieurs.
+- Les grottes.
+- Les donjons.
+- Les interactions existantes.
+- Les comportements des animaux.
+- L'intelligence artificielle des monstres.
+- Les dialogues déjà présents.
+- Les sauvegardes.
+- Les commandes du joueur.
+
+Ne modifie pas les systèmes qui fonctionnent correctement sans raison technique.
+
+---
+
+# PARTIE 6 — TESTS ET VALIDATION FINALE
+
+Effectue une série de tests réels avant de terminer.
+
+## 6.1. Tests des collisions
+
+Teste plusieurs constructions et plusieurs types de surfaces.
+
+Vérifie :
+- La montée et la descente des escaliers.
+- Les escaliers tournants.
+- Les paliers.
+- Les seuils des bâtiments.
+- Les sols intérieurs.
+- Les sols extérieurs.
+- Les plateformes.
+- Les passages entre les pièces.
+- Les collisions avec les murs.
+
+Le personnage doit pouvoir se déplacer normalement sans traverser les surfaces solides.
+
+## 6.2. Tests du mode développeur
+
+Vérifie :
+- L'activation depuis les paramètres.
+- La désactivation.
+- L'affichage de la liste des lieux.
+- La téléportation vers chaque catégorie de lieu.
+- La téléportation vers les intérieurs.
+- La position d'apparition.
+- La restauration de la partie normale.
+- L'absence de modification de la sauvegarde normale.
+- La disparition des changements temporaires après désactivation.
+
+Effectue notamment un test où le joueur modifie plusieurs éléments de sa partie en mode développeur, puis quitte ce mode.
+
+Vérifie que la partie normale retrouve exactement son état antérieur.
+
+## 6.3. Tests des animations
+
+Teste toutes les animations du personnage principal :
+- Inactivité.
+- Marche.
+- Course.
+- Saut.
+- Atterrissage.
+- Rotation.
+- Changement de direction.
+
+Teste également les principales catégories d'animaux, de créatures, de monstres et de PNJ.
+
+Vérifie que les animations correspondent réellement aux déplacements et aux comportements.
+
+## 6.4. Tests généraux
+
+Teste le jeu sur les deux types d'appareils visés.
+
+Vérifie que :
+- Le jeu démarre normalement.
+- Les commandes fonctionnent.
+- Le personnage ne traverse plus les sols.
+- Les escaliers sont utilisables.
+- Le mode développeur fonctionne.
+- Les téléportations fonctionnent.
+- Les animations sont cohérentes.
+- Les systèmes précédents restent fonctionnels.
+- Aucune erreur majeure n'empêche de jouer.
+
+Corrige les problèmes détectés avant de terminer.
+
+---
+
+# INSTRUCTIONS FINALES
+
+Exécute les différentes parties dans l'ordre sans attendre de validation entre chacune.
+
+Ne te contente pas de produire des changements visuels ou des démonstrations.
+
+Les collisions doivent fonctionner réellement, le mode développeur doit isoler réellement les sauvegardes et les animations doivent être reliées aux déplacements et aux comportements réels des entités.
+
+Conserve intégralement l'identité visuelle de THORNVALE : univers médiéval fantastique, modélisation low-poly inspirée de la PS1, textures basse résolution, atmosphère sombre et mystérieuse, brouillard et éclairage adapté aux environnements.
+
+**Ne réalise pas encore les travaux suivants :**
+- Agrandissement général de la carte.
+- Refonte esthétique des animaux et des monstres.
+- Augmentation du niveau de détail des PNJ.
+- Refonte des dialogues et des interactions.
+- Ajout de choix narratifs complexes.
+- Développement de nouveaux systèmes de combat.
+- Ajout massif de décoration.
+- Création du grand château.
+
+Ces éléments seront traités dans des phases ultérieures.
+
+**RÉSULTAT FINAL ATTENDU :**
+
+THORNVALE doit désormais posséder des déplacements fiables dans toutes ses constructions, un mode développeur permettant d'inspecter rapidement le monde sans affecter la progression normale et des animations nettement plus naturelles pour le personnage principal et toutes les entités déjà présentes.
+
+Le jeu doit conserver tout le travail accompli précédemment et devenir plus stable, plus agréable à parcourir et plus vivant.

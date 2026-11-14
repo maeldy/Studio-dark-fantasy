@@ -460,13 +460,15 @@ export function buildAbandonedCabinLocation(
   porchDeck.receiveShadow = true;
   group.add(porchDeck);
 
-  // Walkable front steps climbing onto portico deck (z = 4.4..6.2)
-  for (let s = 0; s < 4; s++) {
+  // Walkable front steps climbing onto portico deck (z = 4.5..6.45)
+  for (let s = 0; s < 5; s++) {
+    const topY = 0.08 + s * 0.09;
+    const h = 0.32;
     const step = new THREE.Mesh(
-      new THREE.BoxGeometry(3.4 - s * 0.08, 0.14, 0.5),
+      new THREE.BoxGeometry(3.6 - s * 0.08, h, 0.48),
       s % 2 === 0 ? m.mossStoneMat : m.stoneMat
     );
-    step.position.set(0, 0.06 + s * 0.1, 6.05 - s * 0.44);
+    step.position.set(0, topY - h * 0.5, 6.28 - s * 0.42);
     step.receiveShadow = true;
     group.add(step);
   }
@@ -657,19 +659,22 @@ export function buildAncientRuinLocation(
   upperDais.receiveShadow = true;
   group.add(upperDais);
 
-  // Front mossy stairway (z = 5.2..7.8) + inner dais stairs (z = -0.3..-1.4)
-  for (let s = 0; s < 5; s++) {
+  // Front mossy stairway (z = 5.3..9.2) + inner dais stairs (z = 0.15..-1.15)
+  for (let s = -1; s < 6; s++) {
+    const topY = 0.06 + s * 0.072;
+    const h = 0.68;
     const step = new THREE.Mesh(
-      new THREE.BoxGeometry(4.8 - s * 0.1, 0.16, 0.58),
+      new THREE.BoxGeometry(5.05 - s * 0.08, h, 0.6),
       s % 2 === 0 ? m.mossStoneMat : m.stoneMat
     );
-    step.position.set(0, 0.04 + s * 0.09, 7.55 - s * 0.52);
+    step.position.set(0, topY - h * 0.5, 8.2 - s * 0.52);
     step.receiveShadow = true;
     group.add(step);
   }
-  for (let s = 0; s < 3; s++) {
-    const step = new THREE.Mesh(new THREE.BoxGeometry(4.2, 0.16, 0.44), m.mossStoneMat);
-    step.position.set(0, 0.48 + s * 0.12, -0.32 - s * 0.42);
+  for (let s = 0; s < 4; s++) {
+    const topY = 0.50 + s * 0.093;
+    const step = new THREE.Mesh(new THREE.BoxGeometry(4.3, 0.24, 0.42), m.mossStoneMat);
+    step.position.set(0, topY - 0.12, 0.04 - s * 0.36);
     step.receiveShadow = true;
     group.add(step);
   }
@@ -953,11 +958,12 @@ export function buildAncientShrineLocation(
   group.add(forecourt);
 
   for (let s = 0; s < 6; s++) {
+    const topY = 0.07 + s * 0.07;
     const step = new THREE.Mesh(
-      new THREE.BoxGeometry(4.4, 0.14, 0.56),
+      new THREE.BoxGeometry(4.5, 0.34, 0.58),
       s % 2 === 0 ? m.mossStoneMat : m.stoneMat
     );
-    step.position.set(0, 0.04 + s * 0.075, 6.9 - s * 0.52);
+    step.position.set(0, topY - 0.17, 7.2 - s * 0.54);
     step.receiveShadow = true;
     group.add(step);
   }
@@ -976,9 +982,10 @@ export function buildAncientShrineLocation(
   sanctumPodium.castShadow = true;
   group.add(sanctumPodium);
 
-  for (let s = 0; s < 4; s++) {
-    const pStep = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.16, 0.48), m.mossStoneMat);
-    pStep.position.set(0, 0.48 + s * 0.14, -1.2 - s * 0.44);
+  for (let s = 0; s < 5; s++) {
+    const topY = 0.56 + s * 0.18;
+    const pStep = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.28, 0.44), m.mossStoneMat);
+    pStep.position.set(0, topY - 0.14, -0.3 - s * 0.36);
     pStep.receiveShadow = true;
     group.add(pStep);
   }
@@ -1139,7 +1146,7 @@ export function buildAncientShrineLocation(
     id: 'portal_shrine_enter',
     targetId: 'shrine_interior',
     x: portalWorld.x,
-    y: worldY + 0.9,
+    y: worldY + 1.3,
     z: portalWorld.z,
     radius: 2.3,
     label: 'Enter Sanctum of Whispering Roots',
@@ -1195,14 +1202,14 @@ export function buildMedievalTowerLocation(
   terrace.receiveShadow = true;
   group.add(terrace);
 
-  for (let s = 0; s < 9; s++) {
-    const stairY = 0.26 - s * 0.2;
-    const stairZ = 4.0 + s * 0.82;
+  for (let s = 0; s < 10; s++) {
+    const topY = 0.56 - s * 0.14;
+    const stairZ = 4.05 + s * 0.76;
     const tread = new THREE.Mesh(
-      new THREE.BoxGeometry(2.85 - s * 0.06, 0.22, 0.75),
+      new THREE.BoxGeometry(3.1 - s * 0.05, 0.36, 0.84),
       s % 2 === 0 ? m.mossStoneMat : m.stoneMat
     );
-    tread.position.set(Math.sin(s * 0.3) * 0.25, stairY, stairZ);
+    tread.position.set(Math.sin(s * 0.25) * 0.15, topY - 0.18, stairZ);
     tread.receiveShadow = true;
     group.add(tread);
   }
@@ -1412,6 +1419,16 @@ export function buildWoodlandCottageLocation(
   porch.position.set(0, 0.14, 2.7);
   porch.receiveShadow = true;
   group.add(porch);
+
+  const stepLow = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.22, 0.46), m.mossStoneMat);
+  stepLow.position.set(0, 0.0, 3.85);
+  stepLow.receiveShadow = true;
+  group.add(stepLow);
+
+  const stepMid = new THREE.Mesh(new THREE.BoxGeometry(2.55, 0.22, 0.44), m.woodMat);
+  stepMid.position.set(0, 0.09, 3.48);
+  stepMid.receiveShadow = true;
+  group.add(stepMid);
 
   // Timber & stone cottage walls
   const walls = new THREE.Mesh(new THREE.BoxGeometry(5.2, 2.55, 4.2), m.weatheredTimberMat);
@@ -1737,6 +1754,14 @@ export function buildDungeonCliffGateLocation(
   threshold.position.set(0, 0.16, 1.2);
   threshold.receiveShadow = true;
   group.add(threshold);
+
+  for (let s = 0; s < 2; s++) {
+    const topY = 0.12 + s * 0.12;
+    const cStep = new THREE.Mesh(new THREE.BoxGeometry(4.6, 0.28, 0.56), m.stoneMat);
+    cStep.position.set(0, topY - 0.14, 4.1 - s * 0.48);
+    cStep.receiveShadow = true;
+    group.add(cStep);
+  }
 
   // Monumental carved gate piers & gothic arch
   const gateArch = new THREE.Mesh(

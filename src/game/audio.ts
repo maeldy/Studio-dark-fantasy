@@ -184,6 +184,57 @@ export class ForestAudioSystem {
     osc.stop(now + 0.28);
   }
 
+  public playGatherCue(kind: 'foliage' | 'mineral' | 'curio' | 'locked'): void {
+    if (!this.ctx || !this.ambientBus || !this.enabled) return;
+    const now = this.ctx.currentTime;
+
+    if (kind === 'foliage') {
+      const dur = 0.14;
+      const buf = this.ctx.createBuffer(1, Math.floor(this.ctx.sampleRate * dur), this.ctx.sampleRate);
+      const ch = buf.getChannelData(0);
+      for (let i = 0; i < ch.length; i++) {
+        const env = Math.sin((i / ch.length) * Math.PI);
+        ch[i] = (Math.random() * 2 - 1) * env * 0.7;
+      }
+      const src = this.ctx.createBufferSource();
+      src.buffer = buf;
+      const filt = this.ctx.createBiquadFilter();
+      filt.type = 'bandpass';
+      filt.frequency.value = 1150;
+      filt.Q.value = 1.0;
+      const gain = this.ctx.createGain();
+      gain.gain.value = 0.13;
+      src.connect(filt);
+      filt.connect(gain);
+      gain.connect(this.ambientBus);
+      src.start(now);
+      return;
+    }
+
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    if (kind === 'mineral') {
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(620, now);
+      osc.frequency.exponentialRampToValueAtTime(340, now + 0.15);
+    } else if (kind === 'curio') {
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(440, now);
+      osc.frequency.exponentialRampToValueAtTime(659.25, now + 0.24);
+    } else {
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(160, now);
+      osc.frequency.exponentialRampToValueAtTime(110, now + 0.16);
+    }
+    gain.gain.setValueAtTime(0.001, now);
+    gain.gain.linearRampToValueAtTime(kind === 'locked' ? 0.08 : 0.14, now + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+    osc.connect(gain);
+    gain.connect(this.ambientBus);
+    osc.start(now);
+    osc.stop(now + 0.27);
+  }
+
   public update(elapsed: number, dt: number, speed: number, isGrounded: boolean, onPath: boolean): void {
     if (!this.enabled || !this.ctx || !this.windFilter || !this.windGain) return;
 
@@ -234,6 +285,198 @@ export class ForestAudioSystem {
     filter.connect(gain);
     gain.connect(this.ambientBus);
     src.start(now);
+  }
+
+  public playEcosystemCue(
+    kind:
+      | 'rustle'
+      | 'crow'
+      | 'owl'
+      | 'songbird'
+      | 'wolf_growl'
+      | 'monster_alert'
+      | 'monster_hit'
+      | 'sword_swing'
+      | 'sword_hit'
+      | 'player_hurt'
+      | 'spirit_chime'
+      | 'npc_murmur'
+  ): void {
+    if (!this.ctx || !this.ambientBus || !this.enabled) return;
+    const now = this.ctx.currentTime;
+
+    if (kind === 'rustle') {
+      const dur = 0.16;
+      const buf = this.ctx.createBuffer(1, Math.floor(this.ctx.sampleRate * dur), this.ctx.sampleRate);
+      const ch = buf.getChannelData(0);
+      for (let i = 0; i < ch.length; i++) {
+        const env = Math.sin((i / ch.length) * Math.PI);
+        ch[i] = (Math.random() * 2 - 1) * env * 0.6;
+      }
+      const src = this.ctx.createBufferSource();
+      src.buffer = buf;
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.frequency.value = 1400;
+      filter.Q.value = 1.2;
+      const gain = this.ctx.createGain();
+      gain.gain.value = 0.08;
+      src.connect(filter);
+      filter.connect(gain);
+      gain.connect(this.ambientBus);
+      src.start(now);
+      return;
+    }
+
+    if (kind === 'crow') {
+      for (let c = 0; c < 2; c++) {
+        const t = now + c * 0.21;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(640 - c * 40, t);
+        osc.frequency.exponentialRampToValueAtTime(420, t + 0.14);
+        const filt = this.ctx.createBiquadFilter();
+        filt.type = 'bandpass';
+        filt.frequency.value = 950;
+        filt.Q.value = 2.0;
+        gain.gain.setValueAtTime(0.001, t);
+        gain.gain.linearRampToValueAtTime(0.05, t + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.16);
+        osc.connect(filt);
+        filt.connect(gain);
+        gain.connect(this.ambientBus);
+        osc.start(t);
+        osc.stop(t + 0.17);
+      }
+      return;
+    }
+
+    if (kind === 'owl') {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(380, now);
+      osc.frequency.linearRampToValueAtTime(335, now + 0.36);
+      gain.gain.setValueAtTime(0.001, now);
+      gain.gain.linearRampToValueAtTime(0.055, now + 0.06);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+      osc.connect(gain);
+      gain.connect(this.ambientBus);
+      osc.start(now);
+      osc.stop(now + 0.42);
+      return;
+    }
+
+    if (kind === 'songbird') {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(1650, now);
+      osc.frequency.exponentialRampToValueAtTime(2250, now + 0.06);
+      osc.frequency.exponentialRampToValueAtTime(1480, now + 0.13);
+      gain.gain.setValueAtTime(0.001, now);
+      gain.gain.linearRampToValueAtTime(0.032, now + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+      osc.connect(gain);
+      gain.connect(this.ambientBus);
+      osc.start(now);
+      osc.stop(now + 0.16);
+      return;
+    }
+
+    if (kind === 'wolf_growl' || kind === 'monster_alert') {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sawtooth';
+      const base = kind === 'wolf_growl' ? 115 : 86;
+      osc.frequency.setValueAtTime(base, now);
+      osc.frequency.exponentialRampToValueAtTime(base * 0.72, now + 0.32);
+      const filt = this.ctx.createBiquadFilter();
+      filt.type = 'lowpass';
+      filt.frequency.value = 340;
+      gain.gain.setValueAtTime(0.001, now);
+      gain.gain.linearRampToValueAtTime(0.11, now + 0.05);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.34);
+      osc.connect(filt);
+      filt.connect(gain);
+      gain.connect(this.ambientBus);
+      osc.start(now);
+      osc.stop(now + 0.36);
+      return;
+    }
+
+    if (kind === 'sword_swing') {
+      const dur = 0.14;
+      const buf = this.ctx.createBuffer(1, Math.floor(this.ctx.sampleRate * dur), this.ctx.sampleRate);
+      const ch = buf.getChannelData(0);
+      for (let i = 0; i < ch.length; i++) {
+        const env = Math.sin((i / ch.length) * Math.PI);
+        ch[i] = (Math.random() * 2 - 1) * env;
+      }
+      const src = this.ctx.createBufferSource();
+      src.buffer = buf;
+      const filt = this.ctx.createBiquadFilter();
+      filt.type = 'bandpass';
+      filt.frequency.setValueAtTime(900, now);
+      filt.frequency.exponentialRampToValueAtTime(340, now + dur);
+      const gain = this.ctx.createGain();
+      gain.gain.value = 0.15;
+      src.connect(filt);
+      filt.connect(gain);
+      gain.connect(this.ambientBus);
+      src.start(now);
+      return;
+    }
+
+    if (kind === 'sword_hit' || kind === 'monster_hit' || kind === 'player_hurt') {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'triangle';
+      const f0 = kind === 'sword_hit' ? 185 : kind === 'player_hurt' ? 105 : 130;
+      osc.frequency.setValueAtTime(f0, now);
+      osc.frequency.exponentialRampToValueAtTime(48, now + 0.16);
+      gain.gain.setValueAtTime(0.001, now);
+      gain.gain.linearRampToValueAtTime(kind === 'player_hurt' ? 0.2 : 0.16, now + 0.012);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+      osc.connect(gain);
+      gain.connect(this.ambientBus);
+      osc.start(now);
+      osc.stop(now + 0.19);
+      return;
+    }
+
+    if (kind === 'spirit_chime') {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(587.33, now);
+      osc.frequency.exponentialRampToValueAtTime(880, now + 0.45);
+      gain.gain.setValueAtTime(0.001, now);
+      gain.gain.linearRampToValueAtTime(0.055, now + 0.08);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.52);
+      osc.connect(gain);
+      gain.connect(this.ambientBus);
+      osc.start(now);
+      osc.stop(now + 0.54);
+      return;
+    }
+
+    if (kind === 'npc_murmur') {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'triangle';
+      const f = 140 + Math.random() * 45;
+      osc.frequency.setValueAtTime(f, now);
+      osc.frequency.linearRampToValueAtTime(f * 0.92, now + 0.09);
+      gain.gain.setValueAtTime(0.001, now);
+      gain.gain.linearRampToValueAtTime(0.06, now + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+      osc.connect(gain);
+      gain.connect(this.ambientBus);
+      osc.start(now);
+      osc.stop(now + 0.11);
+    }
   }
 
   public dispose(): void {

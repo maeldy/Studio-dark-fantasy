@@ -86,10 +86,13 @@ export function createWandererCharacter(textures: ProceduralTextures): WandererR
     applyRetroVertexSnap(m, 220);
   }
 
-  // 1. Torso group (hips at y = 0.72)
+  // 1. Pelvis & Torso group (hips at y = 0.72)
+  const pelvisPivot = new THREE.Group();
+  pelvisPivot.position.y = 0.72;
+  bodyPivot.add(pelvisPivot);
+
   const torso = new THREE.Group();
-  torso.position.y = 0.72;
-  bodyPivot.add(torso);
+  pelvisPivot.add(torso);
 
   // Fluted brigandine/tunic via LatheGeometry
   const tunicProfile = [
@@ -144,10 +147,13 @@ export function createWandererCharacter(textures: ProceduralTextures): WandererR
   cloak.castShadow = true;
   torso.add(cloak);
 
-  // 5. Pointed Gothic Visored Helm / Hooded Cowl
+  // 5. Neck & Pointed Gothic Visored Helm / Hooded Cowl
+  const neckPivot = new THREE.Group();
+  neckPivot.position.set(0, 0.55, 0.01);
+  torso.add(neckPivot);
+
   const headPivot = new THREE.Group();
-  headPivot.position.set(0, 0.55, 0.01);
-  torso.add(headPivot);
+  neckPivot.add(headPivot);
 
   const faceMask = new THREE.Mesh(new THREE.OctahedronGeometry(0.125, 0), matShadowFace);
   faceMask.position.y = 0.13;
@@ -177,8 +183,8 @@ export function createWandererCharacter(textures: ProceduralTextures): WandererR
   helmCrest.position.set(0, 0.37, 0.0);
   headPivot.add(helmCrest);
 
-  // 6 & 7. Articulated Arms + Iron Gauntlets
-  function buildArm(side: -1 | 1): THREE.Group {
+  // 6 & 7. Articulated Arms + Elbows + Iron Gauntlets
+  function buildArm(side: -1 | 1): { shoulder: THREE.Group; forearm: THREE.Group } {
     const pivot = new THREE.Group();
     pivot.position.set(side * 0.25, 0.43, 0);
 
@@ -186,19 +192,27 @@ export function createWandererCharacter(textures: ProceduralTextures): WandererR
     upper.position.y = -0.11;
     pivot.add(upper);
 
+    const forearm = new THREE.Group();
+    forearm.position.set(0, -0.22, 0);
+    pivot.add(forearm);
+
     const bracer = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.045, 0.22, 5), matDarkIron);
-    bracer.position.y = -0.32;
-    pivot.add(bracer);
+    bracer.position.y = -0.10;
+    forearm.add(bracer);
 
     const hand = new THREE.Mesh(new THREE.BoxGeometry(0.075, 0.08, 0.075), matLeather);
-    hand.position.y = -0.45;
-    pivot.add(hand);
+    hand.position.y = -0.23;
+    forearm.add(hand);
 
-    return pivot;
+    return { shoulder: pivot, forearm };
   }
 
-  const leftArmPivot = buildArm(-1);
-  const rightArmPivot = buildArm(1);
+  const leftArm = buildArm(-1);
+  const rightArm = buildArm(1);
+  const leftArmPivot = leftArm.shoulder;
+  const leftForearmPivot = leftArm.forearm;
+  const rightArmPivot = rightArm.shoulder;
+  const rightForearmPivot = rightArm.forearm;
   torso.add(leftArmPivot, rightArmPivot);
 
   // 8. Sheathed Longsword at right-rear hip
@@ -245,8 +259,8 @@ export function createWandererCharacter(textures: ProceduralTextures): WandererR
   lanternLight.position.set(0, -0.1, 0.05);
   lanternPivot.add(lanternLight);
 
-  // 10 & 11. Articulated Legs + Greaves & Boots
-  function buildLeg(side: -1 | 1): THREE.Group {
+  // 10 & 11. Articulated Legs + Knees + Greaves & Boots
+  function buildLeg(side: -1 | 1): { hip: THREE.Group; knee: THREE.Group } {
     const pivot = new THREE.Group();
     pivot.position.set(side * 0.11, 0.66, 0);
 
@@ -254,34 +268,74 @@ export function createWandererCharacter(textures: ProceduralTextures): WandererR
     thigh.position.y = -0.16;
     pivot.add(thigh);
 
+    const knee = new THREE.Group();
+    knee.position.set(0, -0.32, 0);
+    pivot.add(knee);
+
     const greave = new THREE.Mesh(new THREE.CylinderGeometry(0.064, 0.054, 0.31, 5), matDarkIron);
-    greave.position.y = -0.47;
-    pivot.add(greave);
+    greave.position.y = -0.15;
+    knee.add(greave);
 
     const foot = new THREE.Mesh(new THREE.BoxGeometry(0.095, 0.08, 0.17), matLeather);
-    foot.position.set(0, -0.62, 0.035);
-    pivot.add(foot);
+    foot.position.set(0, -0.30, 0.035);
+    knee.add(foot);
 
-    return pivot;
+    return { hip: pivot, knee };
   }
 
-  const leftLegPivot = buildLeg(-1);
-  const rightLegPivot = buildLeg(1);
+  const leftLeg = buildLeg(-1);
+  const rightLeg = buildLeg(1);
+  const leftLegPivot = leftLeg.hip;
+  const leftKneePivot = leftLeg.knee;
+  const rightLegPivot = rightLeg.hip;
+  const rightKneePivot = rightLeg.knee;
   bodyPivot.add(leftLegPivot, rightLegPivot);
+
+  // Drawn Longsword in right hand (shown during combat strikes)
+  const drawnSwordGroup = new THREE.Group();
+  drawnSwordGroup.position.set(0, -0.23, 0.04);
+  drawnSwordGroup.rotation.x = Math.PI * 0.44;
+  drawnSwordGroup.visible = false;
+
+  const dGrip = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.16, 5), matLeather);
+  dGrip.position.y = 0.04;
+  drawnSwordGroup.add(dGrip);
+
+  const dGuard = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.028, 0.036), matDarkIron);
+  dGuard.position.y = 0.12;
+  drawnSwordGroup.add(dGuard);
+
+  const dBlade = new THREE.Mesh(new THREE.BoxGeometry(0.042, 0.84, 0.016), matDarkIron);
+  dBlade.position.y = 0.55;
+  drawnSwordGroup.add(dBlade);
+
+  const dTip = new THREE.Mesh(new THREE.ConeGeometry(0.025, 0.12, 4), matDarkIron);
+  dTip.position.y = 1.02;
+  drawnSwordGroup.add(dTip);
+
+  rightForearmPivot.add(drawnSwordGroup);
 
   return {
     root,
     bodyPivot,
+    pelvisPivot,
     torso,
+    neckPivot,
     headPivot,
     cape: cloak,
     leftArmPivot,
+    leftForearmPivot,
     rightArmPivot,
+    rightForearmPivot,
     leftLegPivot,
+    leftKneePivot,
     rightLegPivot,
+    rightKneePivot,
     lanternPivot,
     lanternLight,
     contactShadow,
+    drawnSwordGroup,
+    sheathedSwordGroup: swordGroup,
   };
 }
 
@@ -853,28 +907,28 @@ export function createDistantSilhouettes(): THREE.Group {
     flatShading: true,
   });
 
-  // 1. Ring of distant jagged mountain peaks beyond the 92m playable region
-  const peakCount = 20;
+  // 1. Ring of distant jagged mountain peaks beyond the 168m playable region
+  const peakCount = 24;
   for (let i = 0; i < peakCount; i++) {
     const angle = (i / peakCount) * Math.PI * 2 + 0.12;
-    const dist = 118 + (i % 3) * 14;
-    const h = 34 + ((i * 7) % 5) * 8.5;
-    const r = 20 + ((i * 3) % 4) * 5.5;
+    const dist = 194 + (i % 3) * 16;
+    const h = 42 + ((i * 7) % 5) * 9.5;
+    const r = 24 + ((i * 3) % 4) * 6.5;
     const peak = new THREE.Mesh(new THREE.ConeGeometry(r, h, 5), mountainMat);
-    peak.position.set(Math.cos(angle) * dist, h * 0.38 - 1, Math.sin(angle) * dist);
+    peak.position.set(Math.cos(angle) * dist, h * 0.38 + 2, Math.sin(angle) * dist);
     peak.rotation.y = i * 0.9;
     group.add(peak);
   }
 
   // 2. Layered distant forest ridge silhouettes perched on outer hills
-  const ridgeConeGeo = new THREE.ConeGeometry(2.6, 9.5, 5);
-  const ridgePineInst = new THREE.InstancedMesh(ridgeConeGeo, ridgePineMat, 44);
+  const ridgeConeGeo = new THREE.ConeGeometry(3.1, 11.0, 5);
+  const ridgePineInst = new THREE.InstancedMesh(ridgeConeGeo, ridgePineMat, 60);
   const dummy = new THREE.Object3D();
-  for (let i = 0; i < 44; i++) {
-    const a = (i / 44) * Math.PI * 2 + (i % 3) * 0.04;
-    const dist = 96 + (i % 4) * 5.5;
-    const s = 0.9 + (i % 5) * 0.22;
-    dummy.position.set(Math.cos(a) * dist, 6.5 + (i % 3) * 2.2, Math.sin(a) * dist);
+  for (let i = 0; i < 60; i++) {
+    const a = (i / 60) * Math.PI * 2 + (i % 3) * 0.04;
+    const dist = 172 + (i % 4) * 6.5;
+    const s = 0.95 + (i % 5) * 0.24;
+    dummy.position.set(Math.cos(a) * dist, 10.5 + (i % 3) * 2.5, Math.sin(a) * dist);
     dummy.rotation.set(0, i * 0.7, 0);
     dummy.scale.set(s, s * 1.15, s);
     dummy.updateMatrix();
@@ -884,9 +938,9 @@ export function createDistantSilhouettes(): THREE.Group {
   ridgePineInst.computeBoundingSphere();
   group.add(ridgePineInst);
 
-  // 3. Distant Gothic Citadel perched on a misty crag beyond the NW Bastion Ruins
+  // 3. Distant Gothic Citadel perched on a misty crag beyond the NW horizon
   const citadel = new THREE.Group();
-  citadel.position.set(-54, 12, -118);
+  citadel.position.set(-92, 18, -206);
   citadel.rotation.y = 0.52;
 
   const crag = new THREE.Mesh(new THREE.ConeGeometry(13, 24, 6), mountainMat);
@@ -936,9 +990,9 @@ export function createDistantSilhouettes(): THREE.Group {
 
   group.add(citadel);
 
-  // 4. Distant Ruined Aqueduct silhouette on the eastern ridge beyond Silvermire Pond
+  // 4. Distant Ruined Aqueduct silhouette on the eastern ridge beyond Silverwind Gorge
   const aqueduct = new THREE.Group();
-  aqueduct.position.set(106, 10, -28);
+  aqueduct.position.set(192, 16, -42);
   aqueduct.rotation.y = -0.95;
   for (let p = 0; p < 4; p++) {
     const pillar = new THREE.Mesh(new THREE.BoxGeometry(1.8, 14, 1.8), ruinMat);

@@ -2,5 +2,5 @@
   "name": "Thornvale",
   "description": "Atmospheric retro 3D dark fantasy forest exploration prototype built with Three.js.",
   "requestFramePermissions": [],
-  "majorCapabilities": []
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

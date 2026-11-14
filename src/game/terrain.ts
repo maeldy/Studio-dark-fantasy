@@ -55,6 +55,42 @@ const SOUTH_EAST_POINTS = [
   new THREE.Vector3(31.0, 0, -28.0),
 ];
 
+// 5. Outer North Deepwood track: Sunken Gate -> Greywatch Ridge -> Deepwood Clearing
+const NORTH_DEEPWOOD_POINTS = [
+  new THREE.Vector3(-16.0, 0, -47.0),
+  new THREE.Vector3(-21.0, 0, -66.0),
+  new THREE.Vector3(-20.0, 0, -90.0),
+  new THREE.Vector3(-18.0, 0, -114.0),
+  new THREE.Vector3(-22.0, 0, -134.0),
+];
+
+// 6. Outer Western Stonefall Canyon track: West Loop -> Stonefall Pass -> Stone Circle
+const WEST_STONEFALL_POINTS = [
+  new THREE.Vector3(-50.0, 0, 3.0),
+  new THREE.Vector3(-68.0, 0, -4.0),
+  new THREE.Vector3(-88.0, 0, -14.0),
+  new THREE.Vector3(-106.0, 0, -24.0),
+  new THREE.Vector3(-121.0, 0, -32.0),
+];
+
+// 7. Outer Southern Thornwood Bridle Path: Elderwood -> Thornwood Glades
+const SOUTH_GLADES_POINTS = [
+  new THREE.Vector3(14.0, 0, 15.0),
+  new THREE.Vector3(17.5, 0, 38.0),
+  new THREE.Vector3(14.5, 0, 66.0),
+  new THREE.Vector3(11.0, 0, 92.0),
+  new THREE.Vector3(8.5, 0, 118.0),
+];
+
+// 8. Outer Eastern Highland Track: Silvermire Shore -> Silverwind Ford -> Highland Watch-Ruin
+const EAST_HIGHLAND_POINTS = [
+  new THREE.Vector3(56.0, 0, -12.0),
+  new THREE.Vector3(76.0, 0, -8.5),
+  new THREE.Vector3(93.0, 0, -14.0),
+  new THREE.Vector3(108.5, 0, -18.0), // Natural rock ford over Silverwind Creek
+  new THREE.Vector3(123.0, 0, -18.0),
+];
+
 // Winding forest stream flowing beneath Blackwater Bridge into Silvermire Pond
 export const STREAM_POINTS = [
   new THREE.Vector3(10.0, 0, -78.0),
@@ -66,24 +102,50 @@ export const STREAM_POINTS = [
   new THREE.Vector3(70.0, 0, -16.0),
 ];
 
+// Outer Highland River: Silverwind Creek -> Waterfall Ledge -> Cascade Pool -> Gorge
+export const SILVERWIND_STREAM_POINTS = [
+  new THREE.Vector3(118.0, 0, -96.0),
+  new THREE.Vector3(116.0, 0, -72.0),
+  new THREE.Vector3(114.0, 0, -53.0),
+  new THREE.Vector3(112.0, 0, -42.5),
+  new THREE.Vector3(109.0, 0, -26.0),
+  new THREE.Vector3(108.5, 0, -12.0),
+  new THREE.Vector3(113.0, 0, 14.0),
+  new THREE.Vector3(118.0, 0, 46.0),
+];
+
 const mainCurve = new THREE.CatmullRomCurve3(MAIN_PATH_POINTS);
 const eastCurve = new THREE.CatmullRomCurve3(EAST_PATH_POINTS);
 const westCurve = new THREE.CatmullRomCurve3(WEST_LOOP_POINTS);
 const southEastCurve = new THREE.CatmullRomCurve3(SOUTH_EAST_POINTS);
+const northDeepwoodCurve = new THREE.CatmullRomCurve3(NORTH_DEEPWOOD_POINTS);
+const westStonefallCurve = new THREE.CatmullRomCurve3(WEST_STONEFALL_POINTS);
+const southGladesCurve = new THREE.CatmullRomCurve3(SOUTH_GLADES_POINTS);
+const eastHighlandCurve = new THREE.CatmullRomCurve3(EAST_HIGHLAND_POINTS);
+
 export const streamCurve = new THREE.CatmullRomCurve3(STREAM_POINTS);
+export const silverwindCurve = new THREE.CatmullRomCurve3(SILVERWIND_STREAM_POINTS);
 
 const allPathSamples: { x: number; z: number }[] = [
   ...mainCurve.getPoints(72).map((p) => ({ x: p.x, z: p.z })),
   ...eastCurve.getPoints(48).map((p) => ({ x: p.x, z: p.z })),
   ...westCurve.getPoints(60).map((p) => ({ x: p.x, z: p.z })),
   ...southEastCurve.getPoints(48).map((p) => ({ x: p.x, z: p.z })),
+  ...northDeepwoodCurve.getPoints(48).map((p) => ({ x: p.x, z: p.z })),
+  ...westStonefallCurve.getPoints(48).map((p) => ({ x: p.x, z: p.z })),
+  ...southGladesCurve.getPoints(52).map((p) => ({ x: p.x, z: p.z })),
+  ...eastHighlandCurve.getPoints(44).map((p) => ({ x: p.x, z: p.z })),
 ];
 
 const streamSamples: { x: number; z: number }[] = streamCurve
   .getPoints(64)
   .map((p) => ({ x: p.x, z: p.z }));
 
-export const PLAYABLE_BOUNDS_RADIUS = 92;
+const silverwindSamples: { x: number; z: number }[] = silverwindCurve
+  .getPoints(80)
+  .map((p) => ({ x: p.x, z: p.z }));
+
+export const PLAYABLE_BOUNDS_RADIUS = 168;
 export const BOG_CENTER = { x: -14.0, z: 2.0 };
 export const BOG_WATER_LEVEL = -0.36;
 export const POND_CENTER = { x: 70.0, z: -16.0 };
@@ -105,6 +167,16 @@ export const CAVE_ANCIENT_CENTER = { x: -8.0, z: 38.0 };
 export const CAVE_ANCIENT_YAW = 0.1;
 export const CITADEL_GATE_CENTER = { x: 64.0, z: -36.0 };
 export const CITADEL_GATE_YAW = -1.3;
+
+// New Outer Region Anchors (Prompt 4)
+export const DEEPWOOD_NORTH_CENTER = { x: -19.0, z: -116.0 };
+export const FEN_NORTH_CENTER = { x: 26.0, z: -124.0 };
+export const CASCADE_CENTER = { x: 112.5, z: -43.0 };
+export const HIGHLAND_RUIN_CENTER = { x: 124.0, z: -18.0 };
+export const THORNWOOD_GLADES_CENTER = { x: 10.0, z: 108.0 };
+export const WAYSTATION_CENTER = { x: 62.0, z: 98.0 };
+export const STONEFALL_CIRCLE_CENTER = { x: -122.0, z: -32.0 };
+export const MOOR_POND_CENTER = { x: -108.0, z: 62.0 };
 
 // Bridge geometry constants (shared identically by mesh and walkable collision)
 export const BRIDGE_CENTER = { x: 36.0, z: -44.0 };
@@ -130,7 +202,24 @@ export const LANDMARK_ZONES: LandmarkZone[] = [
   { id: 'citadel_gate', name: 'Sunken Citadel Vault', x: 64, z: -36, radius: 12.5 },
   { id: 'crags_tor', name: 'Cragstone Tor', x: 44, z: 14, radius: 12.0 },
   { id: 'pond', name: 'Silvermire Pond', x: 70, z: -16, radius: 14.0 },
+  // Outer Expanded Regions (Prompt 4)
+  { id: 'deepwood_north', name: 'Northern Deepwood', x: DEEPWOOD_NORTH_CENTER.x, z: DEEPWOOD_NORTH_CENTER.z, radius: 20.0 },
+  { id: 'fen_north', name: 'Whispering Fen Tarn', x: FEN_NORTH_CENTER.x, z: FEN_NORTH_CENTER.z, radius: 18.0 },
+  { id: 'silverwind_waterfall', name: 'Silverwind Cascade', x: CASCADE_CENTER.x, z: CASCADE_CENTER.z, radius: 18.0 },
+  { id: 'highland_crags', name: 'Highland Watch-Ruin', x: HIGHLAND_RUIN_CENTER.x, z: HIGHLAND_RUIN_CENTER.z, radius: 18.0 },
+  { id: 'thornwood_glades', name: 'Thornwood Glades', x: THORNWOOD_GLADES_CENTER.x, z: THORNWOOD_GLADES_CENTER.z, radius: 22.0 },
+  { id: 'abandoned_waystation', name: 'Old Timber Waystation', x: WAYSTATION_CENTER.x, z: WAYSTATION_CENTER.z, radius: 16.0 },
+  { id: 'stonefall_valley', name: 'Stonefall Stone Circle', x: STONEFALL_CIRCLE_CENTER.x, z: STONEFALL_CIRCLE_CENTER.z, radius: 19.0 },
+  { id: 'western_moor', name: 'Western Moorland Tarn', x: MOOR_POND_CENTER.x, z: MOOR_POND_CENTER.z, radius: 19.0 },
 ];
+
+export type TerrainBiome =
+  | 'clearing'
+  | 'deepwood'
+  | 'rocky'
+  | 'wetland'
+  | 'riverbank'
+  | 'glade';
 
 function smoothstep(edge0: number, edge1: number, x: number): number {
   const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
@@ -181,7 +270,10 @@ export function groveDensityAt(x: number, z: number): number {
     Math.sin(x * 0.068 + 0.6) * Math.cos(z * 0.064 - 0.4) * 0.34 +
     Math.cos(x * 0.037 - z * 0.046 + 1.2) * 0.24;
   const micro = Math.sin(x * 0.16 - z * 0.14 + 2.1) * 0.14;
-  return THREE.MathUtils.clamp(0.54 + macro + micro, 0, 1);
+  // Extra dense northern & southern woods, sparser rocky crags in far east/west
+  const northBias = smoothstep(-50, -110, z) * 0.16;
+  const rockyThin = smoothstep(88, 128, x) * 0.22;
+  return THREE.MathUtils.clamp(0.54 + macro + micro + northBias - rockyThin, 0, 1);
 }
 
 export function pathMaskAt(x: number, z: number): number {
@@ -189,7 +281,7 @@ export function pathMaskAt(x: number, z: number): number {
   return 1 - smoothstep(1.05, 2.45, d);
 }
 
-export function streamDistanceAt(x: number, z: number): number {
+export function brookDistanceAt(x: number, z: number): number {
   let minDistSq = Infinity;
   for (let i = 0; i < streamSamples.length; i++) {
     const p = streamSamples[i];
@@ -199,6 +291,47 @@ export function streamDistanceAt(x: number, z: number): number {
     if (d2 < minDistSq) minDistSq = d2;
   }
   return Math.sqrt(minDistSq);
+}
+
+export function silverwindDistanceAt(x: number, z: number): number {
+  let minDistSq = Infinity;
+  for (let i = 0; i < silverwindSamples.length; i++) {
+    const p = silverwindSamples[i];
+    const dx = x - p.x;
+    const dz = z - p.z;
+    const d2 = dx * dx + dz * dz;
+    if (d2 < minDistSq) minDistSq = d2;
+  }
+  return Math.sqrt(minDistSq);
+}
+
+export function streamDistanceAt(x: number, z: number): number {
+  return Math.min(brookDistanceAt(x, z), silverwindDistanceAt(x, z));
+}
+
+export function biomeAt(x: number, z: number): TerrainBiome {
+  if (Math.hypot(x, z) < 16) return 'clearing';
+  if (
+    Math.hypot(x - BOG_CENTER.x, z - BOG_CENTER.z) < 12 ||
+    Math.hypot(x - FEN_NORTH_CENTER.x, z - FEN_NORTH_CENTER.z) < 22 ||
+    Math.hypot(x - MOOR_POND_CENTER.x, z - MOOR_POND_CENTER.z) < 26
+  ) {
+    return 'wetland';
+  }
+  if (streamDistanceAt(x, z) < 6.5 || Math.hypot(x - POND_CENTER.x, z - POND_CENTER.z) < 14) {
+    return 'riverbank';
+  }
+  if (
+    x > 86 ||
+    Math.hypot(x - STONEFALL_CIRCLE_CENTER.x, z - STONEFALL_CIRCLE_CENTER.z) < 34 ||
+    Math.hypot(x - 44, z - 14) < 18
+  ) {
+    return 'rocky';
+  }
+  if (z > 68 && Math.hypot(x - THORNWOOD_GLADES_CENTER.x, z - THORNWOOD_GLADES_CENTER.z) < 42) {
+    return 'glade';
+  }
+  return 'deepwood';
 }
 
 function baseTerrainElevation(x: number, z: number): number {
@@ -226,7 +359,19 @@ function baseTerrainElevation(x: number, z: number): number {
   const southCragRise =
     smoothstep(22, 0, Math.hypot(x - 44, z - 14)) * 2.4;
 
-  // Gentle flat pads for buildings, ruins, shrine, tower & underground mouths
+  // Outer region relief (highland plateau for cascade, western stonefall canyon ridges, deepwood swells)
+  const eastHighlandPlateau =
+    smoothstep(86, 114, x) * smoothstep(-40, -58, z) * 4.4;
+  const highlandWatchRise =
+    smoothstep(28, 8, Math.hypot(x - HIGHLAND_RUIN_CENTER.x, z - HIGHLAND_RUIN_CENTER.z)) * 2.4;
+  const stonefallRidgeNorth =
+    Math.exp(-((x + 104) * (x + 104)) / 420 - ((z + 58) * (z + 58)) / 260) * 4.2;
+  const stonefallRidgeSouth =
+    Math.exp(-((x + 108) * (x + 108)) / 420 - ((z - 8) * (z - 8)) / 260) * 3.8;
+  const southernGladeSwell =
+    smoothstep(65, 130, z) * (1.2 + 0.9 * Math.sin(x * 0.04));
+
+  // Gentle flat pads for existing & outer landmarks
   const cabinPadDist = Math.hypot(x - CABIN_CENTER.x, z - CABIN_CENTER.z);
   const cottagePadDist = Math.hypot(x - COTTAGE_CENTER.x, z - COTTAGE_CENTER.z);
   const whisperPadDist = Math.hypot(x - SHRINE_CENTER.x, z - SHRINE_CENTER.z);
@@ -237,13 +382,20 @@ function baseTerrainElevation(x: number, z: number): number {
   const ancCavePadDist = Math.hypot(x - CAVE_ANCIENT_CENTER.x, z - CAVE_ANCIENT_CENTER.z);
   const citGatePadDist = Math.hypot(x - CITADEL_GATE_CENTER.x, z - CITADEL_GATE_CENTER.z);
 
-  const perimeterFactor = smoothstep(82, 128, distFromCenter);
+  const deepwoodPadDist = Math.hypot(x - DEEPWOOD_NORTH_CENTER.x, z - DEEPWOOD_NORTH_CENTER.z);
+  const highlandRuinPadDist = Math.hypot(x - HIGHLAND_RUIN_CENTER.x, z - HIGHLAND_RUIN_CENTER.z);
+  const waystationPadDist = Math.hypot(x - WAYSTATION_CENTER.x, z - WAYSTATION_CENTER.z);
+  const stonefallPadDist = Math.hypot(x - STONEFALL_CIRCLE_CENTER.x, z - STONEFALL_CIRCLE_CENTER.z);
+  const gladesPadDist = Math.hypot(x - THORNWOOD_GLADES_CENTER.x, z - THORNWOOD_GLADES_CENTER.z);
+
+  // Outer perimeter mountain ring shifted outward to r=158..206 so inner r<=85 stays identical
+  const perimeterFactor = smoothstep(158, 206, distFromCenter);
   const ridgeVariation =
     1 + 0.35 * Math.sin(Math.atan2(z, x) * 5.0 + 0.8) + 0.2 * Math.cos(Math.atan2(z, x) * 9.0);
-  const perimeterRidge = perimeterFactor * perimeterFactor * 18.5 * ridgeVariation;
+  const perimeterRidge = perimeterFactor * perimeterFactor * 21.0 * ridgeVariation;
 
   const outerRim =
-    smoothstep(115, 165, distFromCenter) * (14 + 8 * Math.sin(x * 0.06) * Math.cos(z * 0.06));
+    smoothstep(188, 232, distFromCenter) * (15 + 8 * Math.sin(x * 0.05) * Math.cos(z * 0.05));
 
   let h =
     macroHills * (0.12 + 0.88 * clearingFlatness) +
@@ -254,8 +406,29 @@ function baseTerrainElevation(x: number, z: number): number {
     bastionHill +
     towerHill +
     southCragRise +
+    eastHighlandPlateau +
+    highlandWatchRise +
+    stonefallRidgeNorth +
+    stonefallRidgeSouth +
+    southernGladeSwell +
     perimeterRidge +
     outerRim;
+
+  // Carve / level the winding dirt paths before flattening landmark clearing pads
+  const pMask = pathMaskAt(x, z);
+  if (pMask > 0.01) {
+    const smoothPathHeight =
+      northClimb +
+      eastOverlookRise +
+      bastionHill * 0.9 +
+      southCragRise * 0.85 +
+      eastHighlandPlateau * 0.7 +
+      highlandWatchRise * 0.9 +
+      southernGladeSwell * 0.8 +
+      macroHills * 0.38 +
+      Math.sin(x * 0.08) * Math.cos(z * 0.08) * 0.25;
+    h = THREE.MathUtils.lerp(h, smoothPathHeight, pMask * 0.65);
+  }
 
   // Flatten sanctuary glade, homestead yard, cottage clearing, ruin terrace & tower hilltop
   if (whisperPadDist < 15.5) {
@@ -270,8 +443,8 @@ function baseTerrainElevation(x: number, z: number): number {
     const padBlend = 1 - smoothstep(4.8, 10.5, cottagePadDist);
     h = THREE.MathUtils.lerp(h, 1.85 + microBump * 0.2, padBlend * 0.9);
   }
-  if (ruinsPadDist < 15.5) {
-    const padBlend = 1 - smoothstep(7.5, 15.5, ruinsPadDist);
+  if (ruinsPadDist < 16.5) {
+    const padBlend = 1 - smoothstep(8.5, 16.5, ruinsPadDist);
     h = THREE.MathUtils.lerp(h, 5.1 + microBump * 0.18, padBlend * 0.94);
   }
   if (towerPadDist < 12.0) {
@@ -295,23 +468,32 @@ function baseTerrainElevation(x: number, z: number): number {
     h = THREE.MathUtils.lerp(h, 2.25 + microBump * 0.2, padBlend * 0.92);
   }
 
+  // Outer Region Landmark Pads
+  if (deepwoodPadDist < 16.0) {
+    const padBlend = 1 - smoothstep(7.5, 16.0, deepwoodPadDist);
+    h = THREE.MathUtils.lerp(h, 2.55 + microBump * 0.2, padBlend * 0.88);
+  }
+  if (highlandRuinPadDist < 15.0) {
+    const padBlend = 1 - smoothstep(7.5, 15.0, highlandRuinPadDist);
+    h = THREE.MathUtils.lerp(h, 3.85 + microBump * 0.18, padBlend * 0.92);
+  }
+  if (waystationPadDist < 14.0) {
+    const padBlend = 1 - smoothstep(6.5, 14.0, waystationPadDist);
+    h = THREE.MathUtils.lerp(h, 2.05 + microBump * 0.18, padBlend * 0.9);
+  }
+  if (stonefallPadDist < 16.5) {
+    const padBlend = 1 - smoothstep(8.2, 16.5, stonefallPadDist);
+    h = THREE.MathUtils.lerp(h, 2.2 + microBump * 0.18, padBlend * 0.92);
+  }
+  if (gladesPadDist < 17.0) {
+    const padBlend = 1 - smoothstep(8.5, 17.0, gladesPadDist);
+    h = THREE.MathUtils.lerp(h, 1.55 + microBump * 0.2, padBlend * 0.86);
+  }
+
   // Shallow Misty Bog Hollow on western edge of the clearing
   const bogDist = Math.hypot(x - BOG_CENTER.x, (z - BOG_CENTER.z) * 0.82);
   const bogDip = (1 - smoothstep(2.8, 8.2, bogDist)) * 0.92;
   h -= bogDip;
-
-  // Carve / level the winding dirt paths
-  const pMask = pathMaskAt(x, z);
-  if (pMask > 0.01) {
-    const smoothPathHeight =
-      northClimb +
-      eastOverlookRise +
-      bastionHill * 0.9 +
-      southCragRise * 0.85 +
-      macroHills * 0.38 +
-      Math.sin(x * 0.08) * Math.cos(z * 0.08) * 0.25;
-    h = THREE.MathUtils.lerp(h, smoothPathHeight, pMask * 0.65);
-  }
 
   return h;
 }
@@ -320,9 +502,17 @@ export function groundHeightAt(x: number, z: number): number {
   let h = baseTerrainElevation(x, z);
 
   // Carve winding Blackwater Brook channel
-  const sDist = streamDistanceAt(x, z);
+  const sDist = brookDistanceAt(x, z);
   if (sDist < 3.6) {
     const channelCarve = (1 - smoothstep(0.65, 3.6, sDist)) * 1.15;
+    h -= channelCarve;
+  }
+
+  // Carve Silverwind Gorge creek channel (shallower near the eastern ford z ~ -18)
+  const swDist = silverwindDistanceAt(x, z);
+  if (swDist < 4.1) {
+    const fordShallow = 1 - 0.52 * (1 - smoothstep(2.0, 6.5, Math.abs(z + 18)));
+    const channelCarve = (1 - smoothstep(0.85, 4.1, swDist)) * 1.1 * fordShallow;
     h -= channelCarve;
   }
 
@@ -333,11 +523,44 @@ export function groundHeightAt(x: number, z: number): number {
     h -= pondCarve;
   }
 
+  // Carve Whispering Fen Tarn in the north-east wetlands
+  const fenDist = Math.hypot((x - FEN_NORTH_CENTER.x) * 0.85, (z - FEN_NORTH_CENTER.z) * 1.05);
+  if (fenDist < 11.5) {
+    const fenCarve = (1 - smoothstep(3.6, 11.5, fenDist)) * 1.18;
+    h -= fenCarve;
+  }
+
+  // Carve Silverwind Cascade Pool at base of eastern waterfall
+  const cascDist = Math.hypot((x - CASCADE_CENTER.x) * 0.92, (z - CASCADE_CENTER.z) * 0.92);
+  if (cascDist < 9.5) {
+    const cascCarve = (1 - smoothstep(3.0, 9.5, cascDist)) * 1.3;
+    h -= cascCarve;
+  }
+
+  // Carve Western Moorland Tarn basin
+  const moorDist = Math.hypot((x - MOOR_POND_CENTER.x) * 0.84, (z - MOOR_POND_CENTER.z) * 1.08);
+  if (moorDist < 12.0) {
+    const moorCarve = (1 - smoothstep(3.8, 12.0, moorDist)) * 1.15;
+    h -= moorCarve;
+  }
+
   return h;
 }
 
 export function getPondWaterLevel(): number {
   return baseTerrainElevation(POND_CENTER.x, POND_CENTER.z) - 0.52;
+}
+
+export function getFenWaterLevel(): number {
+  return baseTerrainElevation(FEN_NORTH_CENTER.x, FEN_NORTH_CENTER.z) - 0.45;
+}
+
+export function getCascadePoolWaterLevel(): number {
+  return baseTerrainElevation(CASCADE_CENTER.x, CASCADE_CENTER.z) - 0.52;
+}
+
+export function getMoorWaterLevel(): number {
+  return baseTerrainElevation(MOOR_POND_CENTER.x, MOOR_POND_CENTER.z) - 0.46;
 }
 
 /**
@@ -349,7 +572,6 @@ export function bridgeDeckHeightAt(x: number, z: number): number | null {
   const cos = Math.cos(BRIDGE_YAW);
   const sin = Math.sin(BRIDGE_YAW);
 
-  // Local u (width across deck), v (length along deck)
   const localU = dx * cos - dz * sin;
   const localV = dx * sin + dz * cos;
 
@@ -389,63 +611,67 @@ function worldToLocalLandmark(
 export function landmarkFloorHeightAt(x: number, z: number): number | null {
   // 1. Hollowbark Homestead (Enlarged manor portico steps & covered porch deck)
   const cDistSq = (x - CABIN_CENTER.x) ** 2 + (z - CABIN_CENTER.z) ** 2;
-  if (cDistSq < 64) {
+  if (cDistSq < 72) {
     const { lx, lz } = worldToLocalLandmark(x, z, CABIN_CENTER.x, CABIN_CENTER.z, CABIN_YAW);
     const base = groundHeightAt(CABIN_CENTER.x, CABIN_CENTER.z) - 0.06;
-    if (Math.abs(lx) <= 1.85 && lz >= 4.4 && lz <= 6.2) {
-      const t = 1 - THREE.MathUtils.clamp((lz - 4.4) / 1.8, 0, 1);
-      return base + t * 0.42;
+    if (Math.abs(lx) <= 1.9 && lz >= 4.4 && lz <= 6.55) {
+      const t = 1 - THREE.MathUtils.clamp((lz - 4.4) / 2.15, 0, 1);
+      return Math.max(groundHeightAt(x, z), base + t * 0.44);
     }
-    if (Math.abs(lx) <= 2.4 && lz >= 2.7 && lz <= 4.45) {
-      return base + 0.42;
+    if (Math.abs(lx) <= 2.45 && lz >= 2.45 && lz <= 4.45) {
+      return base + 0.44;
     }
   }
 
-  // 2. Elderwood Cottage (Wooden front porch & entry step)
+  // 2. Elderwood Cottage (Wooden front porch & entry steps)
   const cotDistSq = (x - COTTAGE_CENTER.x) ** 2 + (z - COTTAGE_CENTER.z) ** 2;
-  if (cotDistSq < 36) {
+  if (cotDistSq < 42) {
     const { lx, lz } = worldToLocalLandmark(x, z, COTTAGE_CENTER.x, COTTAGE_CENTER.z, COTTAGE_YAW);
-    const base = groundHeightAt(COTTAGE_CENTER.x, COTTAGE_CENTER.z) - 0.06;
-    if (Math.abs(lx) <= 1.4 && lz >= 1.9 && lz <= 3.5) {
-      const t = 1 - THREE.MathUtils.clamp((lz - 1.9) / 1.6, 0, 1);
-      return base + t * 0.28;
+    const base = groundHeightAt(COTTAGE_CENTER.x, COTTAGE_CENTER.z) - 0.05;
+    if (Math.abs(lx) <= 1.45 && lz >= 2.0 && lz <= 4.05) {
+      const t = 1 - THREE.MathUtils.clamp((lz - 2.0) / 2.05, 0, 1);
+      return Math.max(groundHeightAt(x, z), base + t * 0.29);
     }
   }
 
   // 3. Ancient Ruin (Mossy Bastion stairs, expanded courtyard & upper aqueduct dais)
   const rDistSq = (x - RUINS_CENTER.x) ** 2 + (z - RUINS_CENTER.z) ** 2;
-  if (rDistSq < 144) {
+  if (rDistSq < 156) {
     const { lx, lz } = worldToLocalLandmark(x, z, RUINS_CENTER.x, RUINS_CENTER.z, RUINS_YAW);
     const base = groundHeightAt(RUINS_CENTER.x, RUINS_CENTER.z) - 0.1;
-    if (Math.abs(lx) <= 2.4 && lz >= 5.2 && lz <= 7.8) {
-      const t = 1 - THREE.MathUtils.clamp((lz - 5.2) / 2.6, 0, 1);
-      return base + t * 0.42;
+    if (Math.abs(lx) <= 2.55 && lz >= 5.25 && lz <= 9.6) {
+      const t = 1 - THREE.MathUtils.clamp((lz - 5.25) / 4.35, 0, 1);
+      const localGround = groundHeightAt(x, z);
+      return Math.max(localGround, THREE.MathUtils.lerp(localGround, base + 0.42, t));
     }
-    if (Math.abs(lx) <= 6.8 && lz >= -0.4 && lz <= 5.25) {
+    if (Math.abs(lx) <= 6.95 && lz >= -0.95 && lz <= 5.3) {
+      if (Math.abs(lx) <= 2.25 && lz >= -1.1 && lz <= 0.18) {
+        const t = 1 - THREE.MathUtils.clamp((lz + 1.1) / 1.28, 0, 1);
+        return base + 0.42 + t * 0.36;
+      }
       return base + 0.42;
     }
-    if (Math.abs(lx) <= 2.1 && lz >= -1.4 && lz <= -0.25) {
-      const t = 1 - THREE.MathUtils.clamp((lz + 1.4) / 1.15, 0, 1);
-      return base + 0.42 + t * 0.36;
-    }
-    if (Math.abs(lx) <= 5.6 && lz >= -6.2 && lz <= -1.3) {
+    if (Math.abs(lx) <= 5.75 && lz >= -6.2 && lz <= -0.95) {
       return base + 0.78;
     }
   }
 
-  // 4. Sanctum of Whispering Roots (Monumental stairs, forecourt & upper portal steps)
+  // 4. Sanctum of Whispering Roots (Monumental stairs, forecourt & upper portal steps -> 1.30m podium)
   const sDistSq = (x - SHRINE_CENTER.x) ** 2 + (z - SHRINE_CENTER.z) ** 2;
-  if (sDistSq < 110) {
+  if (sDistSq < 121) {
     const { lx, lz } = worldToLocalLandmark(x, z, SHRINE_CENTER.x, SHRINE_CENTER.z, SHRINE_YAW);
     const base = groundHeightAt(SHRINE_CENTER.x, SHRINE_CENTER.z) - 0.08;
-    if (Math.abs(lx) <= 2.2 && lz >= 4.0 && lz <= 7.2) {
-      const t = 1 - THREE.MathUtils.clamp((lz - 4.0) / 3.2, 0, 1);
-      return base + t * 0.42;
+    if (Math.abs(lx) <= 2.3 && lz >= 4.1 && lz <= 7.55) {
+      const t = 1 - THREE.MathUtils.clamp((lz - 4.1) / 3.45, 0, 1);
+      return Math.max(groundHeightAt(x, z), base + t * 0.42);
     }
-    if (Math.abs(lx) <= 5.8 && lz >= -4.2 && lz <= 4.1) {
-      if (Math.abs(lx) <= 1.8 && lz >= -3.1 && lz <= -1.2) {
-        const t = 1 - THREE.MathUtils.clamp((lz + 3.1) / 1.9, 0, 1);
-        return base + 0.42 + t * 0.48;
+    if (Math.abs(lx) <= 5.85 && lz >= -4.2 && lz <= 4.15) {
+      if (Math.abs(lx) <= 1.85 && lz >= -1.9 && lz <= -0.1) {
+        const t = 1 - THREE.MathUtils.clamp((lz + 1.9) / 1.8, 0, 1);
+        return base + 0.42 + t * 0.88;
+      }
+      if (lz < -1.85) {
+        return base + 1.3;
       }
       return base + 0.42;
     }
@@ -453,26 +679,30 @@ export function landmarkFloorHeightAt(x: number, z: number): number | null {
 
   // 5. Greywatch Tower (Mossy hillside stone stairs & wide fortified base terrace)
   const tDistSq = (x - TOWER_CENTER.x) ** 2 + (z - TOWER_CENTER.z) ** 2;
-  if (tDistSq < 144) {
+  if (tDistSq < 169) {
     const { lx, lz } = worldToLocalLandmark(x, z, TOWER_CENTER.x, TOWER_CENTER.z, TOWER_YAW);
     const base = groundHeightAt(TOWER_CENTER.x, TOWER_CENTER.z) - 0.12;
-    if (Math.abs(lx) <= 1.65 && lz >= 3.8 && lz <= 10.6) {
-      const t = 1 - THREE.MathUtils.clamp((lz - 3.8) / 6.8, 0, 1);
-      return Math.max(groundHeightAt(x, z), base - 1.35 + t * 1.95);
+    if (Math.abs(lx) <= 1.75 && lz >= 3.8 && lz <= 11.4) {
+      const t = 1 - THREE.MathUtils.clamp((lz - 3.8) / 7.6, 0, 1);
+      const localGround = groundHeightAt(x, z);
+      return THREE.MathUtils.lerp(localGround, base + 0.63, t);
     }
-    if (Math.hypot(lx, lz + 0.4) <= 6.8) {
-      return base + 0.6;
+    if (Math.hypot(lx, lz + 0.4) <= 6.9) {
+      return base + 0.63;
     }
   }
 
-  // 6. Sunken Citadel Gate threshold steps
+  // 6. Sunken Citadel Gate threshold steps & raised terrace
   const gDistSq = (x - CITADEL_GATE_CENTER.x) ** 2 + (z - CITADEL_GATE_CENTER.z) ** 2;
-  if (gDistSq < 49) {
+  if (gDistSq < 56) {
     const { lx, lz } = worldToLocalLandmark(x, z, CITADEL_GATE_CENTER.x, CITADEL_GATE_CENTER.z, CITADEL_GATE_YAW);
     const base = groundHeightAt(CITADEL_GATE_CENTER.x, CITADEL_GATE_CENTER.z) - 0.08;
-    if (Math.abs(lx) <= 2.3 && lz >= 1.2 && lz <= 4.6) {
-      const t = 1 - THREE.MathUtils.clamp((lz - 1.2) / 3.4, 0, 1);
-      return base + t * 0.35;
+    if (Math.abs(lx) <= 2.4 && lz >= 3.35 && lz <= 4.45) {
+      const t = 1 - THREE.MathUtils.clamp((lz - 3.35) / 1.1, 0, 1);
+      return Math.max(groundHeightAt(x, z), base + t * 0.35);
+    }
+    if (Math.abs(lx) <= 2.95 && lz >= -1.0 && lz <= 3.4) {
+      return base + 0.35;
     }
   }
 
@@ -492,6 +722,17 @@ export function walkableHeightAt(x: number, z: number): number {
   return best;
 }
 
+export function rawTerrainSlopeAt(x: number, z: number): number {
+  const eps = 0.6;
+  const hL = groundHeightAt(x - eps, z);
+  const hR = groundHeightAt(x + eps, z);
+  const hD = groundHeightAt(x, z - eps);
+  const hU = groundHeightAt(x, z + eps);
+  const dx = (hR - hL) / (2 * eps);
+  const dz = (hU - hD) / (2 * eps);
+  return Math.hypot(dx, dz);
+}
+
 export function groundSlopeAt(x: number, z: number): number {
   const eps = 0.6;
   const hL = walkableHeightAt(x - eps, z);
@@ -504,12 +745,12 @@ export function groundSlopeAt(x: number, z: number): number {
 }
 
 /**
- * Builds an angular 128x128 retro terrain mesh across the expanded 300m forest region
- * using lightweight MeshLambertMaterial + vertex ambient shading.
+ * Builds an angular 160x160 retro terrain mesh across the expanded 460m Thornvale valley
+ * using lightweight MeshLambertMaterial + vertex ambient & biome shading.
  */
 export function buildTerrainMesh(colorMap: THREE.CanvasTexture): THREE.Mesh {
-  const size = 320;
-  const segments = 128;
+  const size = 460;
+  const segments = 160;
   const geo = new THREE.PlaneGeometry(size, size, segments, segments);
   geo.rotateX(-Math.PI / 2);
 
@@ -518,6 +759,7 @@ export function buildTerrainMesh(colorMap: THREE.CanvasTexture): THREE.Mesh {
 
   const cMoss = new THREE.Color('#4c6049');
   const cDeepForest = new THREE.Color('#324234');
+  const cGladeMoss = new THREE.Color('#5b6f50');
   const cCanopyShadow = new THREE.Color('#222e24');
   const cPathEarth = new THREE.Color('#75624e');
   const cPathCenter = new THREE.Color('#8c765f');
@@ -532,7 +774,7 @@ export function buildTerrainMesh(colorMap: THREE.CanvasTexture): THREE.Mesh {
     const y = groundHeightAt(x, z);
     pos.setY(i, y);
 
-    const eps = 0.8;
+    const eps = 0.85;
     const slope = Math.hypot(
       (groundHeightAt(x + eps, z) - groundHeightAt(x - eps, z)) / (2 * eps),
       (groundHeightAt(x, z + eps) - groundHeightAt(x, z - eps)) / (2 * eps)
@@ -542,15 +784,26 @@ export function buildTerrainMesh(colorMap: THREE.CanvasTexture): THREE.Mesh {
     const clearingMix =
       Math.max(
         1 - smoothstep(4.5, 11.5, dist),
-        1 - smoothstep(5.0, 10.5, Math.hypot(x + 46, z + 18))
+        1 - smoothstep(5.0, 10.5, Math.hypot(x + 46, z + 18)),
+        1 - smoothstep(6.0, 18.0, Math.hypot(x - THORNWOOD_GLADES_CENTER.x, z - THORNWOOD_GLADES_CENTER.z))
       );
+
     const bogDist = Math.hypot(x - BOG_CENTER.x, (z - BOG_CENTER.z) * 0.82);
-    const bogMix = 1 - smoothstep(2.5, 7.6, bogDist);
+    const fenDist = Math.hypot(x - FEN_NORTH_CENTER.x, (z - FEN_NORTH_CENTER.z) * 0.88);
+    const moorDist = Math.hypot(x - MOOR_POND_CENTER.x, (z - MOOR_POND_CENTER.z) * 0.85);
+    const bogMix = Math.max(
+      1 - smoothstep(2.5, 7.6, bogDist),
+      1 - smoothstep(3.8, 12.2, fenDist),
+      1 - smoothstep(4.2, 13.0, moorDist)
+    );
+
     const streamDist = streamDistanceAt(x, z);
     const pondDist = Math.hypot(x - POND_CENTER.x, z - POND_CENTER.z);
+    const cascDist = Math.hypot(x - CASCADE_CENTER.x, z - CASCADE_CENTER.z);
     const waterBankMix = Math.max(
       1 - smoothstep(1.2, 3.8, streamDist),
-      1 - smoothstep(3.5, 10.2, pondDist)
+      1 - smoothstep(3.5, 10.2, pondDist),
+      1 - smoothstep(3.2, 9.6, cascDist)
     );
 
     const grove = groveDensityAt(x, z);
@@ -558,8 +811,12 @@ export function buildTerrainMesh(colorMap: THREE.CanvasTexture): THREE.Mesh {
       smoothstep(7.5, 19.0, dist) * (1 - pMask * 0.88) * (1 - clearingMix) * (0.45 + 0.55 * grove);
     const noisePatch = 0.5 + 0.5 * Math.sin(x * 0.17) * Math.cos(z * 0.19);
     const mossPatch = 0.5 + 0.5 * Math.cos(x * 0.31 + z * 0.27);
+    const gladeFactor = 1 - smoothstep(18, 44, Math.hypot(x - THORNWOOD_GLADES_CENTER.x, z - THORNWOOD_GLADES_CENTER.z));
 
     cTmp.copy(cDeepForest).lerp(cMoss, 0.26 + 0.48 * clearingMix + 0.18 * noisePatch + 0.12 * mossPatch);
+    if (gladeFactor > 0.01) {
+      cTmp.lerp(cGladeMoss, gladeFactor * 0.42);
+    }
     cTmp.lerp(cCanopyShadow, canopyShadowMix * 0.68);
 
     if (bogMix > 0.01) {
@@ -576,7 +833,10 @@ export function buildTerrainMesh(colorMap: THREE.CanvasTexture): THREE.Mesh {
       cTmp.lerp(pathCol, pMask * 0.9);
     }
 
-    const rockMix = smoothstep(0.36, 0.88, slope);
+    const rockBias =
+      smoothstep(86, 128, x) * 0.28 +
+      (1 - smoothstep(12, 34, Math.hypot(x - STONEFALL_CIRCLE_CENTER.x, z - STONEFALL_CIRCLE_CENTER.z))) * 0.24;
+    const rockMix = smoothstep(0.36, 0.88, slope + rockBias);
     if (rockMix > 0.01) {
       cTmp.lerp(cRockSlope, rockMix * 0.88);
     }

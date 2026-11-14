@@ -1,39 +1,138 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { ForestAudioSystem } from './audio';
+import { DEV_TELEPORT_POINTS } from './devLocations';
 import { buildInteriorById } from './interiors';
+import {
+  moveOrSwapInventorySlot,
+  removeInventorySlotItem,
+  splitInventorySlot,
+} from './inventory';
 import { createWandererCharacter } from './models';
 import {
   clearWorldSave,
+  cloneSaveState,
   DISCOVERABLE_CATALOG,
   loadWorldSave,
   persistWorldSave,
   TOTAL_DISCOVERABLE_PLACES,
   WORLD_SEED,
 } from './persistence';
+import { WorldResourceManager } from './resources';
 import { RetroCompositePass } from './retroPass';
 import {
-  groundSlopeAt,
+  bridgeDeckHeightAt,
   groveDensityAt,
   LANDMARK_ZONES,
+  landmarkFloorHeightAt,
   pathMaskAt,
   PLAYABLE_BOUNDS_RADIUS,
+  rawTerrainSlopeAt,
   walkableHeightAt,
 } from './terrain';
 import { createProceduralTextures, ProceduralTextures } from './textures';
+import { EcosystemManager } from './entities/entityManager';
 import {
+  ActiveDialogue,
   BoxCollider,
   CircleCollider,
+  DevTeleportPoint,
+  EcosystemStats,
   EngineCallbacks,
   GraphicsQuality,
+  InteriorId,
   InteriorInstance,
   InteractPrompt,
+  LightAnchor,
+  PlayerVitals,
   PortalLink,
   ThornvaleSaveState,
   TouchMoveInput,
   WandererRig,
 } from './types';
 import { buildForestWorld, WorldBuildResult } from './world';
+
+class SpatialColliderIndex {
+  private readonly cellSize = 8;
+  private circleCells = new Map<number, CircleCollider[]>();
+  private boxCells = new Map<number, BoxCollider[]>();
+  private seenBoxSet = new Set<BoxCollider>();
+
+  constructor(circles: CircleCollider[], boxes: BoxCollider[]) {
+    for (let i = 0; i < circles.length; i++) {
+      const c = circles[i];
+      const span = Math.ceil((c.radius + 1) / this.cellSize);
+      const cx0 = Math.floor(c.x / this.cellSize);
+      const cz0 = Math.floor(c.z / this.cellSize);
+      for (let ox = -span; ox <= span; ox++) {
+        for (let oz = -span; oz <= span; oz++) {
+          const k = this.key(cx0 + ox, cz0 + oz);
+          let arr = this.circleCells.get(k);
+          if (!arr) {
+            arr = [];
+            this.circleCells.set(k, arr);
+          }
+          arr.push(c);
+        }
+      }
+    }
+
+    for (let i = 0; i < boxes.length; i++) {
+      const b = boxes[i];
+      const maxExtent = Math.hypot(b.halfW, b.halfD) + 1.0;
+      const minCx = Math.floor((b.cx - maxExtent) / this.cellSize);
+      const maxCx = Math.floor((b.cx + maxExtent) / this.cellSize);
+      const minCz = Math.floor((b.cz - maxExtent) / this.cellSize);
+      const maxCz = Math.floor((b.cz + maxExtent) / this.cellSize);
+      for (let cx = minCx; cx <= maxCx; cx++) {
+        for (let cz = minCz; cz <= maxCz; cz++) {
+          const k = this.key(cx, cz);
+          let arr = this.boxCells.get(k);
+          if (!arr) {
+            arr = [];
+            this.boxCells.set(k, arr);
+          }
+          arr.push(b);
+        }
+      }
+    }
+  }
+
+  private key(cx: number, cz: number): number {
+    return ((cx + 512) << 12) | ((cz + 512) & 0xfff);
+  }
+
+  public query(x: number, z: number, outCircles: CircleCollider[], outBoxes: BoxCollider[]): void {
+    outCircles.length = 0;
+    outBoxes.length = 0;
+    this.seenBoxSet.clear();
+    const cx = Math.floor(x / this.cellSize);
+    const cz = Math.floor(z / this.cellSize);
+
+    for (let ox = -1; ox <= 1; ox++) {
+      for (let oz = -1; oz <= 1; oz++) {
+        const k = this.key(cx + ox, cz + oz);
+        const cs = this.circleCells.get(k);
+        if (cs) {
+          for (let i = 0; i < cs.length; i++) {
+            const c = cs[i];
+            if (!outCircles.includes(c)) outCircles.push(c);
+          }
+        }
+        const bs = this.boxCells.get(k);
+        if (bs) {
+          for (let i = 0; i < bs.length; i++) {
+            const b = bs[i];
+            if (!this.seenBoxSet.has(b)) {
+              this.seenBoxSet.add(b);
+              outBoxes.push(b);
+            }
+          }
+        }
+      }
+    }
+  }
+}
 
 const _moveDir = new THREE.Vector3();
 const _camForward = new THREE.Vector3();
@@ -45,7 +144,7 @@ const _camRaycaster = new THREE.Raycaster();
 
 const EXTERIOR_BG = new THREE.Color('#66737d');
 const EXTERIOR_FOG_COLOR = '#66737d';
-const EXTERIOR_FOG_DENSITY = 0.027;
+const EXTERIOR_FOG_DENSITY = 0.0235;
 
 interface QualityProfile {
   targetHeight: number;
@@ -108,8 +207,19 @@ type ActiveInteractAction =
   | { kind: 'portal'; portal: PortalLink; prompt: InteractPrompt }
   | {
       kind: 'interactable';
-      cueKind: 'door' | 'brazier' | 'relic' | 'secret';
+      cueKind: 'door' | 'brazier' | 'relic' | 'secret' | 'found_item';
       run: () => string | void;
+      prompt: InteractPrompt;
+    }
+  | {
+      kind: 'npc';
+      npcId: string;
+      prompt: InteractPrompt;
+    }
+  | {
+      kind: 'resource';
+      nodeId: string;
+      isFoundItem: boolean;
       prompt: InteractPrompt;
     };
 
@@ -125,6 +235,9 @@ export class ForestExplorerEngine {
   private envRT: THREE.WebGLRenderTarget;
   private textures: ProceduralTextures;
   private world: WorldBuildResult;
+  private overworldColliderGrid: SpatialColliderIndex;
+  private nearbyCirclesBuf: CircleCollider[] = [];
+  private nearbyBoxesBuf: BoxCollider[] = [];
   private activeInterior: InteriorInstance | null = null;
   private playerRig: WandererRig;
 
@@ -134,12 +247,16 @@ export class ForestExplorerEngine {
   private rimLight: THREE.DirectionalLight;
   private worldLightPool: THREE.PointLight[] = [];
   private lightPoolSortBuf: { idx: number; distSq: number }[] = [];
+  private combinedLightAnchors: LightAnchor[] = [];
 
   private audio: ForestAudioSystem;
   private saveState: ThornvaleSaveState;
+  private ecosystem: EcosystemManager;
+  private resourceManager: WorldResourceManager;
 
   private quality: GraphicsQuality;
   private vhsEnabled = true;
+  private inputPaused = false;
 
   // Animation loop state
   private clock = new THREE.Clock();
@@ -147,16 +264,50 @@ export class ForestExplorerEngine {
   private timeoutId = 0;
   private disposed = false;
 
-  // Character physics & animation state
+  // Character physics, combat & animation state
   private playerPos = new THREE.Vector3(0, 0, 5.2);
   private playerVel = new THREE.Vector3(0, 0, 0);
   private playerYaw = Math.PI;
   private isGrounded = true;
   private walkCycle = 0;
+  private coyoteTimer = 0;
+  private jumpBufferTimer = 0;
+  private jumpPreLaunchTimer = 0;
+  private landSquashTimer = 0;
+  private visualStepOffset = 0;
+  private turnAngularVel = 0;
   private lanternEnabled = true;
+
+  private playerHp = 100;
+  private readonly maxPlayerHp = 100;
+  private hurtFlashTimer = 0;
+  private combatCooldownTimer = 0;
+  private regenEmitAccum = 0;
+  private attackAnimTimer = 0;
+  private attackCooldownTimer = 0;
+  private gatherAnimTimer = 0;
+
+  // Dialogue state
+  private activeDialogue: ActiveDialogue | null = null;
 
   // Exterior return cache when inside an interior
   private exteriorReturn: { x: number; y: number; z: number; yaw: number } | null = null;
+
+  // Isolated Developer Mode snapshot & transient sandbox state
+  private devModeEnabled = false;
+  private devSaveState: ThornvaleSaveState | null = null;
+  private devNormalSnapshot: {
+    saveState: ThornvaleSaveState;
+    playerPos: { x: number; y: number; z: number };
+    playerYaw: number;
+    activeInteriorId: InteriorId | null;
+    exteriorReturn: { x: number; y: number; z: number; yaw: number } | null;
+    playerHp: number;
+    camYaw: number;
+    camPitch: number;
+    camDistance: number;
+    zoneName: string;
+  } | null = null;
 
   // Smooth transition state
   private transitionPhase: 'idle' | 'fadingOut' | 'fadingIn' = 'idle';
@@ -177,10 +328,11 @@ export class ForestExplorerEngine {
   private keys: Record<string, boolean> = {};
   private touchMove: TouchMoveInput = { x: 0, y: 0, magnitude: 0 };
   private touchSprint = false;
-  private jumpRequested = false;
 
   // Mouse & touch drag camera orbit state
   private isDraggingCamera = false;
+  private pointerDownX = 0;
+  private pointerDownY = 0;
   private lastPointerX = 0;
   private lastPointerY = 0;
   private activeOrbitTouchId: number | null = null;
@@ -248,8 +400,8 @@ export class ForestExplorerEngine {
     this.worldRoot = new THREE.Group();
     this.scene.add(this.worldRoot);
 
-    // 4. Camera (far plane covers outer mountain & citadel silhouettes)
-    this.camera = new THREE.PerspectiveCamera(58, width / height, 0.15, 210);
+    // 4. Camera (far plane covers outer 200m+ mountain & citadel silhouettes)
+    this.camera = new THREE.PerspectiveCamera(58, width / height, 0.15, 265);
 
     // 5. Procedural Studio Environment Reflection (for iron/brass accents only)
     const pmrem = new THREE.PMREMGenerator(this.renderer);
@@ -297,6 +449,32 @@ export class ForestExplorerEngine {
     this.textures = createProceduralTextures();
     this.world = buildForestWorld(this.worldRoot, this.textures);
     this.world.setDensityScale(profile.foliageDensity);
+    this.overworldColliderGrid = new SpatialColliderIndex(
+      this.world.colliders,
+      this.world.boxColliders
+    );
+
+    this.resourceManager = new WorldResourceManager(
+      this.worldRoot,
+      WORLD_SEED,
+      this.world.colliders,
+      this.world.boxColliders,
+      this.saveState,
+      this.updateSaveState
+    );
+
+    this.ecosystem = new EcosystemManager(
+      this.scene,
+      this.textures,
+      this.audio,
+      this.saveState,
+      this.updateSaveState
+    );
+    this.ecosystem.initOverworld(
+      WORLD_SEED,
+      this.world.colliders,
+      this.world.boxColliders
+    );
 
     this.playerRig = createWandererCharacter(this.textures);
     this.playerPos.y = walkableHeightAt(this.playerPos.x, this.playerPos.z);
@@ -315,6 +493,7 @@ export class ForestExplorerEngine {
     this.callbacks.onZoneChange?.(this.currentZoneName);
     this.callbacks.onQualityChange?.(this.quality);
     this.callbacks.onSaveStateChange?.(this.saveState);
+    this.emitVitals();
     this.startLoop();
   }
 
@@ -381,14 +560,35 @@ export class ForestExplorerEngine {
 
   private onKeyDown = (e: KeyboardEvent): void => {
     this.keys[e.code] = true;
-    if (e.code === 'Space') {
-      this.jumpRequested = true;
+    if (e.code === 'Escape' && this.activeDialogue) {
+      this.closeDialogue();
+      return;
+    }
+    if (this.inputPaused) return;
+    if ((e.code === 'KeyF' || e.code === 'Enter') && !e.repeat) {
+      if (this.activeDialogue) {
+        this.advanceDialogue();
+      } else {
+        this.triggerInteract();
+      }
+      return;
+    }
+    if (e.code === 'KeyG' && !e.repeat && !this.activeDialogue) {
+      if (this.currentInteractAction?.kind === 'resource') {
+        this.triggerInteract();
+      }
+      return;
+    }
+    if (this.activeDialogue) return;
+
+    if (e.code === 'Space' && !e.repeat) {
+      this.triggerJump();
     } else if (e.code === 'KeyL') {
       this.toggleLantern();
     } else if (e.code === 'KeyR') {
       this.resetCamera();
-    } else if ((e.code === 'KeyF' || e.code === 'Enter') && !e.repeat) {
-      this.triggerInteract();
+    } else if ((e.code === 'KeyV' || e.code === 'KeyJ') && !e.repeat) {
+      this.triggerAttack();
     }
   };
 
@@ -398,6 +598,8 @@ export class ForestExplorerEngine {
 
   private onMouseDown = (e: MouseEvent): void => {
     this.isDraggingCamera = true;
+    this.pointerDownX = e.clientX;
+    this.pointerDownY = e.clientY;
     this.lastPointerX = e.clientX;
     this.lastPointerY = e.clientY;
   };
@@ -411,8 +613,15 @@ export class ForestExplorerEngine {
     this.orbitBy(-dx * 0.0055, dy * 0.0045);
   };
 
-  private onMouseUp = (): void => {
+  private onMouseUp = (e: MouseEvent): void => {
+    const wasDragging = this.isDraggingCamera;
     this.isDraggingCamera = false;
+    if (wasDragging && e.button === 0 && e.target === this.renderer.domElement) {
+      const dragDist = Math.hypot(e.clientX - this.pointerDownX, e.clientY - this.pointerDownY);
+      if (dragDist < 5 && !this.activeDialogue) {
+        this.triggerAttack();
+      }
+    }
   };
 
   private onCanvasTouchStart = (e: TouchEvent): void => {
@@ -474,11 +683,55 @@ export class ForestExplorerEngine {
   }
 
   public triggerJump(): void {
-    this.jumpRequested = true;
+    this.jumpBufferTimer = 0.13;
+  }
+
+  public setInputPaused(paused: boolean): void {
+    this.inputPaused = paused;
+    if (paused) {
+      this.keys = {};
+      this.isDraggingCamera = false;
+    }
+  }
+
+  public moveInventorySlot(fromIdx: number, toIdx: number): void {
+    this.updateSaveState((prev) => ({
+      ...prev,
+      inventory: moveOrSwapInventorySlot(prev.inventory, fromIdx, toIdx),
+    }));
+  }
+
+  public splitInventorySlot(slotIdx: number): boolean {
+    let didSplit = false;
+    this.updateSaveState((prev) => {
+      const res = splitInventorySlot(prev.inventory, slotIdx);
+      if (res.splitSlotIdx === null) return prev;
+      didSplit = true;
+      return {
+        ...prev,
+        inventory: res.nextSlots,
+      };
+    });
+    if (!didSplit) {
+      this.showStatusMessage('Need stack of 2+ and a free slot to split.');
+    }
+    return didSplit;
+  }
+
+  public discardInventoryItem(slotIdx: number, amount?: number): void {
+    this.updateSaveState((prev) => ({
+      ...prev,
+      inventory: removeInventorySlotItem(prev.inventory, slotIdx, amount),
+    }));
   }
 
   public triggerInteract(): void {
-    if (this.transitionPhase !== 'idle' || !this.currentInteractAction) return;
+    if (this.transitionPhase !== 'idle') return;
+    if (this.activeDialogue) {
+      this.advanceDialogue();
+      return;
+    }
+    if (!this.currentInteractAction) return;
     if (this.currentInteractAction.kind === 'portal') {
       const portal = this.currentInteractAction.portal;
       this.pendingPortal = portal;
@@ -486,14 +739,106 @@ export class ForestExplorerEngine {
       this.transitionTimer = 0;
       this.audio.playTransitionCue(portal.transitionKind);
       this.callbacks.onTransitionChange?.(true, portal.label);
+    } else if (this.currentInteractAction.kind === 'npc') {
+      const dlg = this.ecosystem.buildDialogueForNpc(
+        !!this.activeInterior,
+        this.currentInteractAction.npcId
+      );
+      if (dlg) {
+        this.activeDialogue = dlg;
+        this.callbacks.onDialogueChange?.({ ...dlg });
+        this.updateInteractionPrompt();
+      }
+    } else if (this.currentInteractAction.kind === 'resource') {
+      const res = this.resourceManager.harvestNode(
+        this.currentInteractAction.nodeId,
+        this.getActiveSaveState()
+      );
+      this.audio.playGatherCue(res.cueKind);
+      if (res.success) {
+        this.gatherAnimTimer = 0.24;
+      }
+      if (res.message) {
+        this.showStatusMessage(res.message);
+      }
+      this.updateInteractionPrompt();
     } else {
+      const cueKind = this.currentInteractAction.cueKind;
       const msg = this.currentInteractAction.run();
-      this.audio.playInteractCue(this.currentInteractAction.cueKind);
+      if (cueKind === 'found_item') {
+        this.audio.playGatherCue('curio');
+        this.gatherAnimTimer = 0.24;
+      } else {
+        this.audio.playInteractCue(cueKind);
+      }
       if (typeof msg === 'string' && msg.length > 0) {
         this.showStatusMessage(msg);
       }
       this.updateInteractionPrompt();
     }
+  }
+
+  public advanceDialogue(): void {
+    if (!this.activeDialogue) return;
+    if (this.activeDialogue.lineIndex + 1 < this.activeDialogue.lines.length) {
+      this.activeDialogue = {
+        ...this.activeDialogue,
+        lineIndex: this.activeDialogue.lineIndex + 1,
+      };
+      this.audio.playEcosystemCue('npc_murmur');
+      this.callbacks.onDialogueChange?.({ ...this.activeDialogue });
+    } else {
+      this.closeDialogue();
+    }
+  }
+
+  public closeDialogue(): void {
+    if (!this.activeDialogue) return;
+    this.activeDialogue = null;
+    this.callbacks.onDialogueChange?.(null);
+    this.updateInteractionPrompt();
+  }
+
+  public triggerAttack(): void {
+    if (this.transitionPhase !== 'idle' || this.activeDialogue || this.inputPaused) return;
+    if (this.attackCooldownTimer > 0) return;
+
+    this.attackAnimTimer = 0.34;
+    this.attackCooldownTimer = 0.48;
+    this.audio.playEcosystemCue('sword_swing');
+
+    const res = this.ecosystem.performPlayerAttack(
+      !!this.activeInterior,
+      this.playerPos.x,
+      this.playerPos.y,
+      this.playerPos.z,
+      this.playerYaw,
+      22
+    );
+    if (res.hitCount > 0) {
+      this.combatCooldownTimer = 4.5;
+      this.emitVitals();
+    }
+    if (res.killedNames.length > 0) {
+      this.showStatusMessage(`Vanquished: ${res.killedNames[0]}`);
+    }
+  }
+
+  public getEcosystemStats(): EcosystemStats {
+    return this.ecosystem.getStats(!!this.activeInterior);
+  }
+
+  public getPlayerVitals(): PlayerVitals {
+    return {
+      hp: Math.round(this.playerHp),
+      maxHp: this.maxPlayerHp,
+      inCombat: this.combatCooldownTimer > 0,
+      hurtFlash: this.hurtFlashTimer,
+    };
+  }
+
+  private emitVitals(): void {
+    this.callbacks.onPlayerVitalsChange?.(this.getPlayerVitals());
   }
 
   public orbitBy(deltaYaw: number, deltaPitch: number): void {
@@ -559,8 +904,257 @@ export class ForestExplorerEngine {
     return this.saveState;
   }
 
+  public getDevModeEnabled(): boolean {
+    return this.devModeEnabled;
+  }
+
+  public getDevTeleportLocations(): DevTeleportPoint[] {
+    return DEV_TELEPORT_POINTS;
+  }
+
+  public setDevMode(enabled: boolean): void {
+    if (enabled === this.devModeEnabled) return;
+    this.closeDialogue();
+
+    if (enabled) {
+      // Snapshot complete normal state before entering sandboxed Dev Mode
+      this.devNormalSnapshot = {
+        saveState: cloneSaveState(this.saveState),
+        playerPos: { x: this.playerPos.x, y: this.playerPos.y, z: this.playerPos.z },
+        playerYaw: this.playerYaw,
+        activeInteriorId: this.activeInterior ? this.activeInterior.id : null,
+        exteriorReturn: this.exteriorReturn ? { ...this.exteriorReturn } : null,
+        playerHp: this.playerHp,
+        camYaw: this.camYaw,
+        camPitch: this.camPitch,
+        camDistance: this.camDistance,
+        zoneName: this.currentZoneName,
+      };
+      this.devSaveState = cloneSaveState(this.saveState);
+      this.devModeEnabled = true;
+      this.ecosystem.syncSaveState(this.devSaveState);
+      this.resourceManager.syncFromSave(this.devSaveState);
+      this.callbacks.onSaveStateChange?.(this.devSaveState);
+      this.callbacks.onDevModeChange?.(true);
+      this.showStatusMessage('Developer Mode enabled (normal progression isolated)');
+      return;
+    }
+
+    // Exiting Dev Mode: discard transient dev state and restore normal snapshot bit-for-bit
+    const snap = this.devNormalSnapshot;
+    this.devModeEnabled = false;
+    this.devSaveState = null;
+    this.devNormalSnapshot = null;
+
+    if (snap) {
+      this.saveState = cloneSaveState(snap.saveState);
+      this.ecosystem.syncSaveState(this.saveState);
+      this.resourceManager.syncFromSave(this.saveState);
+
+      if (this.activeInterior) {
+        this.scene.remove(this.activeInterior.group);
+        this.activeInterior.dispose();
+        this.activeInterior = null;
+      }
+      this.ecosystem.unloadInterior();
+      this.ecosystem.initOverworld(WORLD_SEED, this.world.colliders, this.world.boxColliders);
+
+      if (snap.activeInteriorId) {
+        const built = buildInteriorById(
+          snap.activeInteriorId,
+          this.textures,
+          this.saveState,
+          this.updateSaveState,
+          () => this.getActiveSaveState()
+        );
+        this.activeInterior = built;
+        this.worldRoot.visible = false;
+        this.scene.add(built.group);
+        this.ecosystem.loadInterior(snap.activeInteriorId);
+        this.applyInteriorEnvironment(built);
+      } else {
+        this.worldRoot.visible = true;
+        this.applyExteriorEnvironment();
+      }
+
+      this.exteriorReturn = snap.exteriorReturn ? { ...snap.exteriorReturn } : null;
+      this.playerPos.set(snap.playerPos.x, snap.playerPos.y, snap.playerPos.z);
+      this.playerVel.set(0, 0, 0);
+      this.playerYaw = snap.playerYaw;
+      this.isGrounded = true;
+      this.visualStepOffset = 0;
+      this.playerHp = snap.playerHp;
+      this.hurtFlashTimer = 0;
+      this.combatCooldownTimer = 0;
+
+      this.playerRig.root.position.copy(this.playerPos);
+      this.playerRig.root.rotation.y = this.playerYaw;
+      this.camYaw = snap.camYaw;
+      this.targetCamYaw = snap.camYaw;
+      this.camPitch = snap.camPitch;
+      this.targetCamPitch = snap.camPitch;
+      this.camDistance = snap.camDistance;
+      this.targetCamDistance = snap.camDistance;
+      this.smoothLookAt.set(this.playerPos.x, this.playerPos.y + 1.44, this.playerPos.z);
+      this.updateCameraTransform(1.0);
+
+      this.currentZoneName = snap.zoneName;
+      this.callbacks.onZoneChange?.(snap.zoneName);
+      this.callbacks.onSaveStateChange?.(this.saveState);
+      this.emitVitals();
+      this.updateInteractionPrompt();
+
+      if (!this.isSoftwareGl) {
+        this.renderer.compile(this.scene, this.camera);
+      }
+    }
+
+    this.callbacks.onDevModeChange?.(false);
+    this.showStatusMessage('Developer Mode disabled — normal state restored');
+  }
+
+  public teleportToDevLocation(locationId: string): boolean {
+    if (!this.devModeEnabled) return false;
+    const target = DEV_TELEPORT_POINTS.find((pt) => pt.id === locationId);
+    if (!target) return false;
+    this.placeAtSnapshotTarget(
+      target.targetEnv === 'overworld' ? null : target.targetEnv,
+      target.x,
+      target.y,
+      target.z,
+      target.yaw ?? Math.PI,
+      target.name
+    );
+    this.showStatusMessage(`Teleported: ${target.name}`);
+    return true;
+  }
+
+  public returnFromDevTeleport(): boolean {
+    if (!this.devModeEnabled || !this.devNormalSnapshot) return false;
+    const snap = this.devNormalSnapshot;
+    this.placeAtSnapshotTarget(
+      snap.activeInteriorId,
+      snap.playerPos.x,
+      snap.playerPos.y,
+      snap.playerPos.z,
+      snap.playerYaw,
+      snap.zoneName,
+      snap.exteriorReturn ? { ...snap.exteriorReturn } : null
+    );
+    this.showStatusMessage('Returned to normal exploration position');
+    return true;
+  }
+
+  private placeAtSnapshotTarget(
+    targetInteriorId: InteriorId | null,
+    x: number,
+    y: number | undefined,
+    z: number,
+    yaw: number,
+    displayName: string,
+    overrideExteriorReturn?: { x: number; y: number; z: number; yaw: number } | null
+  ): void {
+    this.closeDialogue();
+    this.transitionPhase = 'idle';
+    this.pendingPortal = null;
+    this.callbacks.onTransitionChange?.(false);
+
+    if (targetInteriorId === null) {
+      if (this.activeInterior) {
+        this.scene.remove(this.activeInterior.group);
+        this.activeInterior.dispose();
+        this.activeInterior = null;
+      }
+      this.ecosystem.unloadInterior();
+      this.worldRoot.visible = true;
+      this.applyExteriorEnvironment();
+      this.exteriorReturn = null;
+
+      const resolvedY = y !== undefined ? y : walkableHeightAt(x, z);
+      this.playerPos.set(x, resolvedY, z);
+      this.currentZoneName = displayName;
+      this.callbacks.onZoneChange?.(displayName);
+    } else {
+      if (!this.activeInterior) {
+        this.exteriorReturn =
+          overrideExteriorReturn ??
+          (this.devNormalSnapshot
+            ? {
+                x: this.devNormalSnapshot.playerPos.x,
+                y: this.devNormalSnapshot.playerPos.y,
+                z: this.devNormalSnapshot.playerPos.z,
+                yaw: this.devNormalSnapshot.playerYaw,
+              }
+            : { x: 0, y: walkableHeightAt(0, 5.2), z: 5.2, yaw: Math.PI });
+      }
+      if (!this.activeInterior || this.activeInterior.id !== targetInteriorId) {
+        if (this.activeInterior) {
+          this.scene.remove(this.activeInterior.group);
+          this.activeInterior.dispose();
+        }
+        const activeState = this.getActiveSaveState();
+        const built = buildInteriorById(
+          targetInteriorId,
+          this.textures,
+          activeState,
+          this.updateSaveState,
+          () => this.getActiveSaveState()
+        );
+        this.activeInterior = built;
+        this.worldRoot.visible = false;
+        this.scene.add(built.group);
+        this.ecosystem.loadInterior(targetInteriorId);
+        this.applyInteriorEnvironment(built);
+      }
+
+      const refY = y ?? 0;
+      const resolvedY = this.getActiveWalkableHeight(x, z, refY, 0, true);
+      this.playerPos.set(x, resolvedY, z);
+      this.currentZoneName = this.activeInterior.name;
+      this.callbacks.onZoneChange?.(this.activeInterior.name);
+    }
+
+    this.playerVel.set(0, 0, 0);
+    this.playerYaw = yaw;
+    this.isGrounded = true;
+    this.visualStepOffset = 0;
+    this.coyoteTimer = 0.11;
+    this.jumpBufferTimer = 0;
+    this.playerRig.root.position.copy(this.playerPos);
+    this.playerRig.root.rotation.y = this.playerYaw;
+
+    this.camYaw = this.playerYaw + Math.PI;
+    this.targetCamYaw = this.camYaw;
+    this.camDistance = this.activeInterior
+      ? this.activeInterior.lighting.defaultCamDistance
+      : 5.8;
+    this.targetCamDistance = this.camDistance;
+    this.smoothLookAt.set(this.playerPos.x, this.playerPos.y + 1.44, this.playerPos.z);
+    this.updateCameraTransform(1.0);
+    this.updateInteractionPrompt();
+
+    if (!this.isSoftwareGl) {
+      this.renderer.compile(this.scene, this.camera);
+    }
+  }
+
+  private getActiveSaveState(): ThornvaleSaveState {
+    return this.devModeEnabled && this.devSaveState ? this.devSaveState : this.saveState;
+  }
+
   public resetWorldSave(): void {
+    if (this.devModeEnabled) {
+      this.showStatusMessage('Disable Developer Mode before resetting ledger');
+      return;
+    }
     this.saveState = clearWorldSave(WORLD_SEED);
+    this.ecosystem.syncSaveState(this.saveState);
+    this.resourceManager.syncFromSave(this.saveState);
+    this.ecosystem.initOverworld(
+      WORLD_SEED,
+      this.world.colliders,
+      this.world.boxColliders
+    );
     this.callbacks.onSaveStateChange?.(this.saveState);
     this.showStatusMessage('Exploration ledger cleared');
   }
@@ -570,12 +1164,20 @@ export class ForestExplorerEngine {
   private updateSaveState = (
     updater: (prev: ThornvaleSaveState) => ThornvaleSaveState
   ): void => {
+    if (this.devModeEnabled && this.devSaveState) {
+      this.devSaveState = updater(this.devSaveState);
+      this.ecosystem?.syncSaveState(this.devSaveState);
+      this.callbacks.onSaveStateChange?.(this.devSaveState);
+      return;
+    }
     this.saveState = updater(this.saveState);
+    this.ecosystem?.syncSaveState(this.saveState);
     persistWorldSave(this.saveState);
     this.callbacks.onSaveStateChange?.(this.saveState);
   };
 
   private markPlaceDiscovered(id: string, displayName?: string): void {
+    if (this.devModeEnabled) return;
     const entry = DISCOVERABLE_CATALOG.find((item) => item.id === id);
     if (!entry) return;
     if (this.saveState.discoveredIds.includes(id)) return;
@@ -599,6 +1201,7 @@ export class ForestExplorerEngine {
   // --- Portal Execution & Scene Swapping ---
 
   private executePortalTransition(portal: PortalLink): void {
+    this.closeDialogue();
     if (portal.targetId === 'overworld') {
       // Unload interior and restore exterior forest world cleanly
       if (this.activeInterior) {
@@ -606,6 +1209,7 @@ export class ForestExplorerEngine {
         this.activeInterior.dispose();
         this.activeInterior = null;
       }
+      this.ecosystem.unloadInterior();
       this.worldRoot.visible = true;
       this.applyExteriorEnvironment();
 
@@ -639,12 +1243,14 @@ export class ForestExplorerEngine {
       const built = buildInteriorById(
         portal.targetId,
         this.textures,
-        this.saveState,
-        this.updateSaveState
+        this.getActiveSaveState(),
+        this.updateSaveState,
+        () => this.getActiveSaveState()
       );
       this.activeInterior = built;
       this.worldRoot.visible = false;
       this.scene.add(built.group);
+      this.ecosystem.loadInterior(portal.targetId);
       this.applyInteriorEnvironment(built);
 
       this.playerPos.set(portal.spawnX, portal.spawnY, portal.spawnZ);
@@ -779,42 +1385,65 @@ export class ForestExplorerEngine {
     this.frameId = requestAnimationFrame(tick);
   }
 
-  private getActiveWalkableHeight(x: number, z: number, refY: number): number {
+  private getActiveWalkableHeight(
+    x: number,
+    z: number,
+    refY: number,
+    velY = 0,
+    grounded = true
+  ): number {
     if (!this.activeInterior) {
       return walkableHeightAt(x, z);
     }
 
     const surfaces = this.activeInterior.walkableSurfaces;
-    let bestH = -Infinity;
-    let bestScore = Infinity;
+    const maxStepUp = grounded ? 0.36 : velY > 0.08 ? 0.05 : 0.18;
+    let bestFlatH = -Infinity;
+    let bestFlatScore = Infinity;
+    let bestRampH = -Infinity;
+    let bestRampScore = Infinity;
 
     for (let i = 0; i < surfaces.length; i++) {
       const s = surfaces[i];
       if (x < s.minX || x > s.maxX || z < s.minZ || z > s.maxZ) continue;
 
       let h = s.yStart;
-      if (s.rampAxis === 'x') {
-        const t = THREE.MathUtils.clamp((x - s.minX) / Math.max(0.001, s.maxX - s.minX), 0, 1);
-        h = THREE.MathUtils.lerp(s.yStart, s.yEnd, t);
-      } else if (s.rampAxis === 'z') {
-        const t = THREE.MathUtils.clamp((z - s.minZ) / Math.max(0.001, s.maxZ - s.minZ), 0, 1);
-        h = THREE.MathUtils.lerp(s.yStart, s.yEnd, t);
+      if (s.rampAxis === 'x' || s.rampAxis === 'z') {
+        const t =
+          s.rampAxis === 'x'
+            ? THREE.MathUtils.clamp((x - s.minX) / Math.max(0.001, s.maxX - s.minX), 0, 1)
+            : THREE.MathUtils.clamp((z - s.minZ) / Math.max(0.001, s.maxZ - s.minZ), 0, 1);
+
+        if (s.stepCount && s.stairDir) {
+          const u = s.stairDir > 0 ? t : 1 - t;
+          const stepIdx = Math.min(s.stepCount - 1, Math.max(0, Math.floor(u * s.stepCount)));
+          const yLow = Math.min(s.yStart, s.yEnd);
+          const yHigh = Math.max(s.yStart, s.yEnd);
+          h = yLow + ((stepIdx + 1) / s.stepCount) * (yHigh - yLow);
+        } else {
+          h = THREE.MathUtils.lerp(s.yStart, s.yEnd, t);
+        }
       }
 
-      if (h > refY + 0.62) continue;
+      if (h > refY + maxStepUp) continue;
 
-      let score = Math.abs(h - refY);
-      // Slight ramp preference when stepping upward onto stairs from a flat landing
-      if (s.rampAxis !== undefined && h >= refY - 0.12 && h <= refY + 0.45) {
-        score *= 0.45;
-      }
-      if (score < bestScore) {
-        bestScore = score;
-        bestH = h;
+      const score = Math.abs(h - refY);
+      if (s.rampAxis !== undefined) {
+        if (score < bestRampScore) {
+          bestRampScore = score;
+          bestRampH = h;
+        }
+      } else if (score < bestFlatScore) {
+        bestFlatScore = score;
+        bestFlatH = h;
       }
     }
 
-    return bestH === -Infinity ? refY : bestH;
+    if (bestRampH !== -Infinity && (bestFlatH === -Infinity || bestRampH >= bestFlatH - 0.05)) {
+      return bestRampH;
+    }
+    if (bestFlatH !== -Infinity) return bestFlatH;
+    return bestRampH === -Infinity ? refY : bestRampH;
   }
 
   private stepSimulation(dt: number, elapsed: number): void {
@@ -856,17 +1485,41 @@ export class ForestExplorerEngine {
     this.camPitch += (this.targetCamPitch - this.camPitch) * camDamp;
     this.camDistance += (this.targetCamDistance - this.camDistance) * camDamp;
 
-    // 3. Movement relative to camera horizontal direction
+    // Combat, gather & vitals cooldowns
+    if (this.attackAnimTimer > 0) this.attackAnimTimer = Math.max(0, this.attackAnimTimer - dt);
+    if (this.gatherAnimTimer > 0) this.gatherAnimTimer = Math.max(0, this.gatherAnimTimer - dt);
+    if (this.attackCooldownTimer > 0) {
+      this.attackCooldownTimer = Math.max(0, this.attackCooldownTimer - dt);
+    }
+    if (this.hurtFlashTimer > 0) {
+      this.hurtFlashTimer = Math.max(0, this.hurtFlashTimer - dt);
+      if (this.hurtFlashTimer === 0) this.emitVitals();
+    }
+    if (this.combatCooldownTimer > 0) {
+      this.combatCooldownTimer = Math.max(0, this.combatCooldownTimer - dt);
+      if (this.combatCooldownTimer === 0) this.emitVitals();
+    } else if (this.playerHp < this.maxPlayerHp) {
+      this.playerHp = Math.min(this.maxPlayerHp, this.playerHp + 4.5 * dt);
+      this.regenEmitAccum += dt;
+      if (this.regenEmitAccum >= 0.25 || this.playerHp >= this.maxPlayerHp) {
+        this.regenEmitAccum = 0;
+        this.emitVitals();
+      }
+    }
+
+    // 3. Movement relative to camera horizontal direction (paused during dialogue or UI panels)
     let inputX = 0;
     let inputZ = 0;
-    if (this.keys['KeyW'] || this.keys['ArrowUp']) inputZ -= 1;
-    if (this.keys['KeyS'] || this.keys['ArrowDown']) inputZ += 1;
-    if (this.keys['KeyA'] || this.keys['ArrowLeft']) inputX -= 1;
-    if (this.keys['KeyD'] || this.keys['ArrowRight']) inputX += 1;
+    if (!this.activeDialogue && !this.inputPaused) {
+      if (this.keys['KeyW'] || this.keys['ArrowUp']) inputZ -= 1;
+      if (this.keys['KeyS'] || this.keys['ArrowDown']) inputZ += 1;
+      if (this.keys['KeyA'] || this.keys['ArrowLeft']) inputX -= 1;
+      if (this.keys['KeyD'] || this.keys['ArrowRight']) inputX += 1;
 
-    if (this.touchMove.magnitude > 0.05) {
-      inputX += this.touchMove.x;
-      inputZ += this.touchMove.y;
+      if (this.touchMove.magnitude > 0.05) {
+        inputX += this.touchMove.x;
+        inputZ += this.touchMove.y;
+      }
     }
 
     const inputLen = Math.hypot(inputX, inputZ);
@@ -901,25 +1554,49 @@ export class ForestExplorerEngine {
 
       const desiredYaw = Math.atan2(_moveDir.x, _moveDir.z);
       const yawDiff = shortestAngleDiff(this.playerYaw, desiredYaw);
-      this.playerYaw += yawDiff * (1 - Math.exp(-12 * dt));
+      const yawStep = yawDiff * (1 - Math.exp(-12 * dt));
+      this.playerYaw += yawStep;
+      this.turnAngularVel = THREE.MathUtils.damp(
+        this.turnAngularVel,
+        THREE.MathUtils.clamp(yawDiff, -1.6, 1.6),
+        10,
+        dt
+      );
     } else {
       const decel = this.isGrounded ? 12.0 : 2.5;
       this.playerVel.x = THREE.MathUtils.damp(this.playerVel.x, 0, decel, dt);
       this.playerVel.z = THREE.MathUtils.damp(this.playerVel.z, 0, decel, dt);
+      this.turnAngularVel = THREE.MathUtils.damp(this.turnAngularVel, 0, 10, dt);
     }
 
-    // 4. Jump & gravity
-    if (this.jumpRequested && this.isGrounded) {
-      this.playerVel.y = 6.2;
-      this.isGrounded = false;
+    // 4. Coyote time, jump buffering & crisp gravity
+    if (this.jumpBufferTimer > 0) this.jumpBufferTimer = Math.max(0, this.jumpBufferTimer - dt);
+    if (this.jumpPreLaunchTimer > 0) {
+      this.jumpPreLaunchTimer = Math.max(0, this.jumpPreLaunchTimer - dt);
     }
-    this.jumpRequested = false;
+    if (this.landSquashTimer > 0) {
+      this.landSquashTimer = Math.max(0, this.landSquashTimer - dt);
+    }
+    if (this.isGrounded) {
+      this.coyoteTimer = 0.11;
+    } else if (this.coyoteTimer > 0) {
+      this.coyoteTimer = Math.max(0, this.coyoteTimer - dt);
+    }
+
+    if (this.jumpBufferTimer > 0 && this.coyoteTimer > 0) {
+      this.playerVel.y = 6.35;
+      this.isGrounded = false;
+      this.coyoteTimer = 0;
+      this.jumpBufferTimer = 0;
+      this.jumpPreLaunchTimer = 0.08;
+      this.landSquashTimer = 0;
+    }
 
     if (!this.isGrounded) {
-      this.playerVel.y -= 18.0 * dt;
+      this.playerVel.y -= 18.5 * dt;
     }
 
-    // 5. Horizontal movement + Slope (outdoors) & Y-filtered Obstacle Collision
+    // 5. Horizontal movement + Slope (off-pad) & Ledge-Step & Y-filtered Obstacle Collision
     const prevX = this.playerPos.x;
     const prevZ = this.playerPos.z;
     let nextX = prevX + this.playerVel.x * dt;
@@ -928,27 +1605,51 @@ export class ForestExplorerEngine {
     if (!this.activeInterior) {
       const currH = walkableHeightAt(prevX, prevZ);
       const nextH = walkableHeightAt(nextX, nextZ);
-      const nextSlope = groundSlopeAt(nextX, nextZ);
-      if (nextSlope > 0.72 && nextH > currH) {
+      const onStructuredNext =
+        landmarkFloorHeightAt(nextX, nextZ) !== null || bridgeDeckHeightAt(nextX, nextZ) !== null;
+      const slopeBlocked =
+        !onStructuredNext && rawTerrainSlopeAt(nextX, nextZ) > 0.72 && nextH > currH;
+      const ledgeBlocked = nextH - currH > 0.38 && this.playerPos.y <= currH + 0.15;
+
+      if (slopeBlocked || ledgeBlocked) {
         const hOnlyX = walkableHeightAt(nextX, prevZ);
-        const sOnlyX = groundSlopeAt(nextX, prevZ);
-        if (sOnlyX > 0.72 && hOnlyX > currH) nextX = prevX;
+        const structX =
+          landmarkFloorHeightAt(nextX, prevZ) !== null ||
+          bridgeDeckHeightAt(nextX, prevZ) !== null;
+        const blockX =
+          (!structX && rawTerrainSlopeAt(nextX, prevZ) > 0.72 && hOnlyX > currH) ||
+          (hOnlyX - currH > 0.38 && this.playerPos.y <= currH + 0.15);
+        if (blockX) nextX = prevX;
 
         const hOnlyZ = walkableHeightAt(prevX, nextZ);
-        const sOnlyZ = groundSlopeAt(prevX, nextZ);
-        if (sOnlyZ > 0.72 && hOnlyZ > currH) nextZ = prevZ;
+        const structZ =
+          landmarkFloorHeightAt(prevX, nextZ) !== null ||
+          bridgeDeckHeightAt(prevX, nextZ) !== null;
+        const blockZ =
+          (!structZ && rawTerrainSlopeAt(prevX, nextZ) > 0.72 && hOnlyZ > currH) ||
+          (hOnlyZ - currH > 0.38 && this.playerPos.y <= currH + 0.15);
+        if (blockZ) nextZ = prevZ;
       }
     }
 
     const playerRadius = 0.42;
     const pFootY = this.playerPos.y;
     const pHeadY = this.playerPos.y + 1.55;
-    const colliders: CircleCollider[] = this.activeInterior
-      ? this.activeInterior.circleColliders
-      : this.world.colliders;
-    const boxColliders: BoxCollider[] = this.activeInterior
-      ? this.activeInterior.boxColliders
-      : this.world.boxColliders;
+    let colliders: CircleCollider[];
+    let boxColliders: BoxCollider[];
+    if (this.activeInterior) {
+      colliders = this.activeInterior.circleColliders;
+      boxColliders = this.activeInterior.boxColliders;
+    } else {
+      this.overworldColliderGrid.query(
+        nextX,
+        nextZ,
+        this.nearbyCirclesBuf,
+        this.nearbyBoxesBuf
+      );
+      colliders = this.nearbyCirclesBuf;
+      boxColliders = this.nearbyBoxesBuf;
+    }
 
     for (let pass = 0; pass < 2; pass++) {
       for (let i = 0; i < colliders.length; i++) {
@@ -1020,28 +1721,55 @@ export class ForestExplorerEngine {
     this.playerPos.z = nextZ;
 
     // 6. Ground snapping (supports terrain, bridges, and multi-floor interior stairs/slabs)
+    const prevGroundY = this.playerPos.y;
+    const wasGrounded = this.isGrounded;
+    const preSnapVelY = this.playerVel.y;
     const groundY = this.getActiveWalkableHeight(
       this.playerPos.x,
       this.playerPos.z,
-      this.playerPos.y
+      this.playerPos.y,
+      this.playerVel.y,
+      this.isGrounded
     );
     this.playerPos.y += this.playerVel.y * dt;
     if (this.playerPos.y <= groundY) {
+      if (!wasGrounded && preSnapVelY < -2.4) {
+        this.landSquashTimer = 0.22;
+      }
       this.playerPos.y = groundY;
       this.playerVel.y = 0;
       this.isGrounded = true;
-    } else if (this.isGrounded && this.playerPos.y - groundY < 0.35) {
+    } else if (wasGrounded && this.playerPos.y - groundY < 0.34) {
       this.playerPos.y = groundY;
       this.playerVel.y = 0;
     } else if (this.playerPos.y > groundY + 0.08) {
       this.isGrounded = false;
     }
 
-    this.playerRig.root.position.copy(this.playerPos);
+    const stepDelta = this.playerPos.y - prevGroundY;
+    if (
+      wasGrounded &&
+      this.isGrounded &&
+      Math.abs(stepDelta) > 0.008 &&
+      Math.abs(stepDelta) <= 0.36
+    ) {
+      this.visualStepOffset = THREE.MathUtils.clamp(
+        this.visualStepOffset - stepDelta,
+        -0.34,
+        0.34
+      );
+    }
+    this.visualStepOffset = THREE.MathUtils.damp(this.visualStepOffset, 0, 18, dt);
+
+    this.playerRig.root.position.set(
+      this.playerPos.x,
+      this.playerPos.y + this.visualStepOffset,
+      this.playerPos.z
+    );
     this.playerRig.root.rotation.y = this.playerYaw;
 
     const heightAboveGround = Math.max(0, this.playerPos.y - groundY);
-    this.playerRig.contactShadow.position.y = -heightAboveGround + 0.035;
+    this.playerRig.contactShadow.position.y = -heightAboveGround - this.visualStepOffset + 0.035;
     const shadowScale = THREE.MathUtils.clamp(1 - heightAboveGround * 0.25, 0.45, 1.0);
     this.playerRig.contactShadow.scale.setScalar(shadowScale);
 
@@ -1071,13 +1799,56 @@ export class ForestExplorerEngine {
       this.keyLight.target.position.set(this.playerPos.x, this.playerPos.y, this.playerPos.z);
     }
 
-    // 10. Dynamic 6-Light Pooling for active exterior or interior point lights
+    // 10. Update Living Ecosystem (Animals, Creatures, Monsters & NPCs)
+    this.ecosystem.update({
+      dt,
+      elapsed,
+      playerX: this.playerPos.x,
+      playerY: this.playerPos.y,
+      playerZ: this.playerPos.z,
+      playerYaw: this.playerYaw,
+      playerSpeed: horizSpeed,
+      lanternOn: this.lanternEnabled,
+      isInterior: !!this.activeInterior,
+      colliders: this.activeInterior
+        ? this.activeInterior.circleColliders
+        : this.world.colliders,
+      boxColliders: this.activeInterior
+        ? this.activeInterior.boxColliders
+        : this.world.boxColliders,
+      walkableSurfaces: this.activeInterior ? this.activeInterior.walkableSurfaces : null,
+      boundsRadius,
+      talkingNpcId: this.activeDialogue ? this.activeDialogue.npcId : null,
+      onPlayerDamaged: (amount, knockX, knockZ) => {
+        if (this.transitionPhase !== 'idle') return;
+        this.playerHp = Math.max(0, this.playerHp - amount);
+        this.hurtFlashTimer = 0.35;
+        this.combatCooldownTimer = 5.0;
+        this.playerVel.x += knockX;
+        this.playerVel.z += knockZ;
+        this.audio.playEcosystemCue('player_hurt');
+        if (this.playerHp <= 0) {
+          this.handlePlayerFallen();
+        } else {
+          this.emitVitals();
+        }
+      },
+    });
+
+    // 11. Dynamic 6-Light Pooling for active exterior/interior torches + glowing wisps/spirits
     this.updateNearestWorldLights(elapsed);
 
-    // 11. World or Interior Embers, Mist & Shader Time
+    // 12. World Zone Culling, Resources, Embers, Mist & Shader Time
     if (!this.activeInterior) {
       this.world.windUniforms.uTime.value = elapsed;
       this.world.crowGroup.rotation.y = elapsed * 0.26;
+      this.world.updateVisibility(this.playerPos.x, this.playerPos.z, elapsed);
+      this.resourceManager.update(
+        dt,
+        this.playerPos.x,
+        this.playerPos.z,
+        this.getActiveSaveState()
+      );
     }
 
     const activeEmbers = this.activeInterior
@@ -1110,7 +1881,7 @@ export class ForestExplorerEngine {
       this.playerRig.lanternLight.intensity = baseInt * lanternFlicker;
     }
 
-    // 12. Zone Discovery, Interaction Prompt & Audio Update
+    // 13. Zone Discovery, Interaction Prompt & Audio Update
     this.updateActiveZone();
     this.updateInteractionPrompt();
     const onPath = this.activeInterior
@@ -1119,14 +1890,52 @@ export class ForestExplorerEngine {
     this.audio.update(elapsed, dt, horizSpeed, this.isGrounded, onPath);
   }
 
+  private handlePlayerFallen(): void {
+    this.closeDialogue();
+    this.playerHp = this.maxPlayerHp;
+    this.hurtFlashTimer = 0;
+    this.combatCooldownTimer = 0;
+    this.playerVel.set(0, 0, 0);
+
+    if (this.activeInterior) {
+      this.scene.remove(this.activeInterior.group);
+      this.activeInterior.dispose();
+      this.activeInterior = null;
+      this.ecosystem.unloadInterior();
+      this.worldRoot.visible = true;
+      this.applyExteriorEnvironment();
+      this.exteriorReturn = null;
+    }
+
+    this.playerPos.set(0, walkableHeightAt(0, 5.2), 5.2);
+    this.playerYaw = Math.PI;
+    this.playerRig.root.position.copy(this.playerPos);
+    this.playerRig.root.rotation.y = this.playerYaw;
+    this.camYaw = this.playerYaw + Math.PI;
+    this.targetCamYaw = this.camYaw;
+    this.smoothLookAt.set(this.playerPos.x, this.playerPos.y + 1.44, this.playerPos.z);
+    this.updateCameraTransform(1.0);
+    this.emitVitals();
+    this.showStatusMessage('Overwhelmed in the dark — awakened at The Moss Clearing');
+  }
+
   private updateNearestWorldLights(elapsed: number): void {
-    const anchors = this.activeInterior
+    const baseAnchors = this.activeInterior
       ? this.activeInterior.lightAnchors
       : this.world.lightAnchors;
+    const entityAnchors = this.ecosystem.getDynamicLightAnchors(!!this.activeInterior);
+
+    this.combinedLightAnchors.length = 0;
+    for (let i = 0; i < baseAnchors.length; i++) {
+      this.combinedLightAnchors.push(baseAnchors[i]);
+    }
+    for (let i = 0; i < entityAnchors.length; i++) {
+      this.combinedLightAnchors.push(entityAnchors[i]);
+    }
 
     this.lightPoolSortBuf.length = 0;
-    for (let i = 0; i < anchors.length; i++) {
-      const a = anchors[i];
+    for (let i = 0; i < this.combinedLightAnchors.length; i++) {
+      const a = this.combinedLightAnchors[i];
       if (a.baseIntensity <= 0.01) continue;
       const dx = a.x - this.playerPos.x;
       const dy = a.y - (this.playerPos.y + 1.0);
@@ -1141,7 +1950,7 @@ export class ForestExplorerEngine {
         light.intensity = 0;
         continue;
       }
-      const a = anchors[this.lightPoolSortBuf[p].idx];
+      const a = this.combinedLightAnchors[this.lightPoolSortBuf[p].idx];
       light.color.set(a.color);
       light.position.set(a.x, a.y, a.z);
       light.distance = a.distance;
@@ -1156,54 +1965,214 @@ export class ForestExplorerEngine {
   private animateCharacter(dt: number, elapsed: number, speed: number, isRunning: boolean): void {
     const rig = this.playerRig;
     const moveBlend = THREE.MathUtils.clamp(speed / 3.4, 0, 1);
+    const runBlend = isRunning ? THREE.MathUtils.clamp((speed - 3.0) / 2.8, 0, 1) : 0;
 
     if (speed > 0.2 && this.isGrounded) {
-      const freq = isRunning ? 10.6 : 7.0;
+      const freq = THREE.MathUtils.lerp(7.2, 11.2, runBlend);
       this.walkCycle += dt * freq;
     } else if (this.isGrounded) {
       this.walkCycle = THREE.MathUtils.damp(
         this.walkCycle,
         Math.round(this.walkCycle / Math.PI) * Math.PI,
-        6,
+        7,
         dt
       );
     }
 
-    const swingAmp = (isRunning ? 0.78 : 0.52) * moveBlend;
-    const legSwing = Math.sin(this.walkCycle) * swingAmp;
-    const armSwing = Math.sin(this.walkCycle) * swingAmp * 0.78;
-    const strideBob = Math.abs(Math.cos(this.walkCycle)) * (isRunning ? 0.085 : 0.045) * moveBlend;
-    const idleBreath = Math.sin(elapsed * 2.1) * 0.015 * (1 - moveBlend);
+    const sPhase = Math.sin(this.walkCycle);
+    const cPhase = Math.cos(this.walkCycle);
+    const swingAmp = THREE.MathUtils.lerp(0.56, 0.88, runBlend) * moveBlend;
+    const legSwing = sPhase * swingAmp;
+    const armSwing = sPhase * swingAmp * THREE.MathUtils.lerp(0.76, 0.96, runBlend);
+
+    // Asymmetric knee flexion: heel-toe swing bends knee on lift, extends straight on support
+    const leftKneeSwing =
+      (Math.max(0, -sPhase) * THREE.MathUtils.lerp(0.68, 1.05, runBlend) +
+        Math.max(0, cPhase) * 0.14) *
+      moveBlend;
+    const rightKneeSwing =
+      (Math.max(0, sPhase) * THREE.MathUtils.lerp(0.68, 1.05, runBlend) +
+        Math.max(0, cPhase) * 0.14) *
+      moveBlend;
+
+    const strideBob =
+      Math.abs(cPhase) * THREE.MathUtils.lerp(0.048, 0.095, runBlend) * moveBlend;
+    const idleBreath = Math.sin(elapsed * 2.05) * 0.016 * (1 - moveBlend);
+    const weightShiftZ = Math.sin(elapsed * 0.95) * 0.025 * (1 - moveBlend);
 
     if (!this.isGrounded) {
-      rig.leftLegPivot.rotation.x = THREE.MathUtils.damp(rig.leftLegPivot.rotation.x, 0.35, 10, dt);
-      rig.rightLegPivot.rotation.x = THREE.MathUtils.damp(rig.rightLegPivot.rotation.x, -0.25, 10, dt);
-      rig.leftArmPivot.rotation.x = THREE.MathUtils.damp(rig.leftArmPivot.rotation.x, -0.45, 10, dt);
-      rig.rightArmPivot.rotation.x = THREE.MathUtils.damp(rig.rightArmPivot.rotation.x, -0.45, 10, dt);
-      rig.cape.rotation.x = THREE.MathUtils.damp(rig.cape.rotation.x, 0.42, 8, dt);
-    } else {
-      rig.leftLegPivot.rotation.x = legSwing;
-      rig.rightLegPivot.rotation.x = -legSwing;
-      rig.leftArmPivot.rotation.x = -armSwing;
-      rig.rightArmPivot.rotation.x = armSwing;
+      // Multi-phase airborne jump: launch extension -> apex tuck -> fall brace
+      const riseFactor = THREE.MathUtils.clamp(this.playerVel.y / 6.0, -1, 1);
+      const isLaunching = this.jumpPreLaunchTimer > 0 || riseFactor > 0.15;
 
-      const lean = (isRunning ? 0.17 : 0.07) * moveBlend;
-      rig.torso.rotation.x = THREE.MathUtils.damp(rig.torso.rotation.x, lean, 10, dt);
-      rig.bodyPivot.position.y = strideBob + idleBreath;
+      const targetLeftHip = isLaunching ? -0.58 : -0.35;
+      const targetRightHip = isLaunching ? 0.36 : -0.15;
+      const targetLeftKnee = isLaunching ? 0.82 : 0.62;
+      const targetRightKnee = isLaunching ? 0.28 : 0.48;
+      const targetArmX = isLaunching ? -0.78 : -0.38;
+      const targetElbowX = isLaunching ? -0.55 : -0.45;
+      const capeTarget = THREE.MathUtils.clamp(
+        0.48 + Math.max(0, -this.playerVel.y) * 0.06,
+        0.42,
+        0.85
+      );
+
+      rig.leftLegPivot.rotation.x = THREE.MathUtils.damp(rig.leftLegPivot.rotation.x, targetLeftHip, 12, dt);
+      rig.rightLegPivot.rotation.x = THREE.MathUtils.damp(rig.rightLegPivot.rotation.x, targetRightHip, 12, dt);
+      rig.leftKneePivot.rotation.x = THREE.MathUtils.damp(rig.leftKneePivot.rotation.x, targetLeftKnee, 12, dt);
+      rig.rightKneePivot.rotation.x = THREE.MathUtils.damp(rig.rightKneePivot.rotation.x, targetRightKnee, 12, dt);
+      rig.leftArmPivot.rotation.x = THREE.MathUtils.damp(rig.leftArmPivot.rotation.x, targetArmX, 11, dt);
+      rig.rightArmPivot.rotation.x = THREE.MathUtils.damp(rig.rightArmPivot.rotation.x, targetArmX * 0.85, 11, dt);
+      rig.leftForearmPivot.rotation.x = THREE.MathUtils.damp(rig.leftForearmPivot.rotation.x, targetElbowX, 11, dt);
+      rig.rightForearmPivot.rotation.x = THREE.MathUtils.damp(rig.rightForearmPivot.rotation.x, targetElbowX, 11, dt);
+      rig.torso.rotation.x = THREE.MathUtils.damp(
+        rig.torso.rotation.x,
+        isLaunching ? 0.18 : -0.05,
+        9,
+        dt
+      );
+      rig.bodyPivot.position.y = THREE.MathUtils.damp(rig.bodyPivot.position.y, 0.02, 10, dt);
+      rig.pelvisPivot.rotation.z = THREE.MathUtils.damp(rig.pelvisPivot.rotation.z, 0, 10, dt);
+      rig.cape.rotation.x = THREE.MathUtils.damp(rig.cape.rotation.x, capeTarget, 9, dt);
+      rig.neckPivot.rotation.x = THREE.MathUtils.damp(
+        rig.neckPivot.rotation.x,
+        isLaunching ? -0.1 : 0.12,
+        9,
+        dt
+      );
+    } else {
+      // Landing knee squash absorption curve (0 -> peak -> 0 over 0.22s)
+      const squashWave =
+        this.landSquashTimer > 0
+          ? Math.sin((1 - this.landSquashTimer / 0.22) * Math.PI)
+          : 0;
+
+      const targetLeftHip = legSwing - squashWave * 0.28;
+      const targetRightHip = -legSwing - squashWave * 0.28;
+      const targetLeftKnee = leftKneeSwing + squashWave * 0.56 + 0.04 * (1 - moveBlend);
+      const targetRightKnee = rightKneeSwing + squashWave * 0.56 + 0.04 * (1 - moveBlend);
+
+      rig.leftLegPivot.rotation.x = THREE.MathUtils.damp(rig.leftLegPivot.rotation.x, targetLeftHip, 15, dt);
+      rig.rightLegPivot.rotation.x = THREE.MathUtils.damp(rig.rightLegPivot.rotation.x, targetRightHip, 15, dt);
+      rig.leftKneePivot.rotation.x = THREE.MathUtils.damp(rig.leftKneePivot.rotation.x, targetLeftKnee, 15, dt);
+      rig.rightKneePivot.rotation.x = THREE.MathUtils.damp(rig.rightKneePivot.rotation.x, targetRightKnee, 15, dt);
+
+      const armSpreadOut = squashWave * 0.22;
+      const idleArmHang = 0.05 + Math.sin(elapsed * 2.05 + 0.4) * 0.03 * (1 - moveBlend);
+      rig.leftArmPivot.rotation.x = THREE.MathUtils.damp(
+        rig.leftArmPivot.rotation.x,
+        -armSwing + idleArmHang,
+        14,
+        dt
+      );
+      rig.rightArmPivot.rotation.x = THREE.MathUtils.damp(
+        rig.rightArmPivot.rotation.x,
+        armSwing + idleArmHang,
+        14,
+        dt
+      );
+      rig.leftArmPivot.rotation.z = THREE.MathUtils.damp(rig.leftArmPivot.rotation.z, armSpreadOut, 12, dt);
+
+      const targetLeftElbow =
+        -0.16 * (1 - moveBlend) -
+        (0.24 + Math.max(0, -armSwing) * THREE.MathUtils.lerp(0.45, 0.72, runBlend)) * moveBlend -
+        squashWave * 0.35;
+      const targetRightElbow =
+        -0.18 * (1 - moveBlend) -
+        (0.24 + Math.max(0, armSwing) * THREE.MathUtils.lerp(0.45, 0.72, runBlend)) * moveBlend -
+        squashWave * 0.35;
+
+      rig.leftForearmPivot.rotation.x = THREE.MathUtils.damp(rig.leftForearmPivot.rotation.x, targetLeftElbow, 14, dt);
+      rig.rightForearmPivot.rotation.x = THREE.MathUtils.damp(rig.rightForearmPivot.rotation.x, targetRightElbow, 14, dt);
+
+      const lean =
+        THREE.MathUtils.lerp(0.08, 0.22, runBlend) * moveBlend +
+        squashWave * 0.16 +
+        Math.sin(elapsed * 2.05) * 0.014 * (1 - moveBlend);
+      rig.torso.rotation.x = THREE.MathUtils.damp(rig.torso.rotation.x, lean, 12, dt);
+      rig.torso.rotation.z = THREE.MathUtils.damp(
+        rig.torso.rotation.z,
+        -this.turnAngularVel * 0.12 * moveBlend,
+        10,
+        dt
+      );
+
+      rig.pelvisPivot.rotation.z = THREE.MathUtils.damp(
+        rig.pelvisPivot.rotation.z,
+        weightShiftZ + sPhase * 0.04 * moveBlend,
+        10,
+        dt
+      );
+      rig.pelvisPivot.rotation.y = THREE.MathUtils.damp(
+        rig.pelvisPivot.rotation.y,
+        -sPhase * 0.08 * moveBlend,
+        12,
+        dt
+      );
+
+      rig.bodyPivot.position.y = THREE.MathUtils.damp(
+        rig.bodyPivot.position.y,
+        strideBob + idleBreath - squashWave * 0.11,
+        18,
+        dt
+      );
 
       const capeTarget =
-        0.14 + (isRunning ? 0.36 : 0.16) * moveBlend + Math.sin(elapsed * 3.1) * 0.035;
-      rig.cape.rotation.x = THREE.MathUtils.damp(rig.cape.rotation.x, capeTarget, 8, dt);
+        0.14 +
+        THREE.MathUtils.lerp(0.16, 0.42, runBlend) * moveBlend +
+        Math.sin(elapsed * 3.1 + this.walkCycle * 0.35) * (0.032 + 0.04 * runBlend);
+      rig.cape.rotation.x = THREE.MathUtils.damp(rig.cape.rotation.x, capeTarget, 9, dt);
+      rig.neckPivot.rotation.x = THREE.MathUtils.damp(
+        rig.neckPivot.rotation.x,
+        -lean * 0.35 + Math.sin(elapsed * 1.1) * 0.025 * (1 - moveBlend),
+        9,
+        dt
+      );
     }
 
     rig.lanternPivot.rotation.x =
-      Math.sin(elapsed * 2.7 + this.walkCycle * 0.5) * (0.06 + 0.14 * moveBlend);
-    rig.lanternPivot.rotation.z = Math.cos(elapsed * 2.1) * (0.04 + 0.08 * moveBlend);
-    rig.headPivot.rotation.y = Math.sin(elapsed * 0.85) * 0.05 * (1 - moveBlend);
+      Math.sin(elapsed * 2.7 + this.walkCycle * 0.5) * (0.05 + 0.15 * moveBlend) +
+      THREE.MathUtils.clamp(-this.playerVel.y * 0.04, -0.25, 0.25);
+    rig.lanternPivot.rotation.z =
+      Math.cos(elapsed * 2.1) * (0.04 + 0.08 * moveBlend) - this.turnAngularVel * 0.08;
+    rig.headPivot.rotation.y = THREE.MathUtils.damp(
+      rig.headPivot.rotation.y,
+      Math.sin(elapsed * 0.72) * 0.09 * (1 - moveBlend) + this.turnAngularVel * 0.18,
+      7,
+      dt
+    );
+
+    // Drawn Sword Slash or Gathering Reach Animation
+    if (this.attackAnimTimer > 0) {
+      const p = 1 - this.attackAnimTimer / 0.34;
+      rig.drawnSwordGroup.visible = true;
+      rig.sheathedSwordGroup.visible = false;
+      const swingAngle = THREE.MathUtils.lerp(-1.95, 0.78, Math.min(1, p * 1.35));
+      rig.rightArmPivot.rotation.x = swingAngle;
+      rig.rightArmPivot.rotation.z = -0.35 + Math.sin(p * Math.PI) * 0.45;
+      rig.rightForearmPivot.rotation.x = THREE.MathUtils.lerp(-0.9, -0.12, Math.min(1, p * 1.35));
+      rig.torso.rotation.y = Math.sin(p * Math.PI) * -0.32;
+    } else if (this.gatherAnimTimer > 0) {
+      const p = Math.sin((1 - this.gatherAnimTimer / 0.24) * Math.PI);
+      rig.drawnSwordGroup.visible = false;
+      rig.sheathedSwordGroup.visible = true;
+      rig.rightArmPivot.rotation.x = -0.95 * p;
+      rig.rightForearmPivot.rotation.x = -0.55 * p;
+      rig.torso.rotation.x = THREE.MathUtils.lerp(rig.torso.rotation.x, 0.26 * p, 0.65);
+    } else {
+      rig.drawnSwordGroup.visible = false;
+      rig.sheathedSwordGroup.visible = true;
+      rig.rightArmPivot.rotation.z = THREE.MathUtils.damp(rig.rightArmPivot.rotation.z, 0, 10, dt);
+      rig.torso.rotation.y = THREE.MathUtils.damp(rig.torso.rotation.y, 0, 10, dt);
+    }
   }
 
   private updateCameraTransform(dt: number): void {
-    _targetLook.set(this.playerPos.x, this.playerPos.y + 1.44, this.playerPos.z);
+    _targetLook.set(
+      this.playerPos.x,
+      this.playerPos.y + this.visualStepOffset + 1.44,
+      this.playerPos.z
+    );
     const lookAlpha = dt >= 1 ? 1 : 1 - Math.exp(-12 * dt);
     this.smoothLookAt.lerp(_targetLook, lookAlpha);
 
@@ -1293,6 +2262,7 @@ export class ForestExplorerEngine {
       const items = this.activeInterior.interactables;
       for (let i = 0; i < items.length; i++) {
         const it = items[i];
+        if (it.isAvailable && !it.isAvailable()) continue;
         if (Math.abs(this.playerPos.y - it.y) > 1.8) continue;
         const dSq =
           (this.playerPos.x - it.x) * (this.playerPos.x - it.x) +
@@ -1307,6 +2277,50 @@ export class ForestExplorerEngine {
           };
         }
       }
+    } else if (!this.activeDialogue) {
+      const node = this.resourceManager.findNearestInteractableNode(
+        this.playerPos.x,
+        this.playerPos.y,
+        this.playerPos.z,
+        this.getActiveSaveState()
+      );
+      if (node) {
+        const dSq =
+          (this.playerPos.x - node.x) * (this.playerPos.x - node.x) +
+          (this.playerPos.z - node.z) * (this.playerPos.z - node.z);
+        if (dSq < bestDistSq) {
+          bestDistSq = dSq;
+          const verb = node.isFoundItem ? 'Take' : 'Gather';
+          bestAction = {
+            kind: 'resource',
+            nodeId: node.id,
+            isFoundItem: !!node.isFoundItem,
+            prompt: {
+              id: node.id,
+              label: `${verb} ${node.label}`,
+              kind: node.isFoundItem ? 'found_item' : 'resource',
+            },
+          };
+        }
+      }
+    }
+
+    if (!this.activeDialogue) {
+      const npcHit = this.ecosystem.findNearestInteractableNpc(
+        !!this.activeInterior,
+        this.playerPos.x,
+        this.playerPos.y,
+        this.playerPos.z
+      );
+      if (npcHit && !bestAction) {
+        bestAction = {
+          kind: 'npc',
+          npcId: npcHit.npcId,
+          prompt: { id: npcHit.npcId, label: npcHit.label, kind: 'npc' },
+        };
+      }
+    } else {
+      bestAction = null;
     }
 
     this.currentInteractAction = bestAction;
@@ -1322,6 +2336,8 @@ export class ForestExplorerEngine {
     cancelAnimationFrame(this.frameId);
     clearTimeout(this.timeoutId);
     this.unbindEvents();
+    this.resourceManager.dispose();
+    this.ecosystem.dispose();
     this.audio.dispose();
     this.retroPass.dispose();
 

@@ -32,6 +32,7 @@ import {
   InteriorBuildContext,
   InteriorMaterials,
 } from './interiorProps';
+import { addItemsToInventory, ITEM_CATALOG } from './inventory';
 import { ProceduralTextures } from './textures';
 import {
   InteriorId,
@@ -48,6 +49,11 @@ export interface InteriorPersistenceActions {
   setBrazierLit: (brazierId: string, lit: boolean) => void;
   isRelicCollected: (relicId: string) => boolean;
   collectRelic: (relicId: string, label: string) => void;
+  isFoundItemCollected: (itemNodeId: string) => boolean;
+  collectFoundItem: (
+    itemNodeId: string,
+    grants: { itemId: string; quantity: number }[]
+  ) => { ok: boolean; message: string };
 }
 
 function addEntryDoorMesh(
@@ -221,23 +227,24 @@ function buildCabinInterior(
   addWallTorchSconce(ctx, mats, 0, 2.25, -5.95, 0, 1, 2.4, true, 5.5, 12);
   addWallTorchSconce(ctx, mats, 5.85, 2.25, 1.5, -1, 0, 3.7, true, 5.5, 12);
 
-  // Walkable Staircase climbing from Ground (z = 2.8 -> -1.4, x = 4.4) up to Loft Floor (y = 3.2)
+  // Walkable Staircase climbing from Ground (z = 3.4 -> -1.2, x = 4.5) cleanly flush with Loft Floor (y = 3.2)
   addWalkableStaircase(
     ctx,
     mats.woodPlank,
     4.5,
-    0.8,
+    1.1,
     1.85,
     4.6,
     0,
     3.2,
     'z',
     -1,
-    11,
-    mats.bark
+    14,
+    mats.bark,
+    { underSolid: true, underCollider: true, exposedSides: ['neg'] }
   );
 
-  // Second Floor Landing & Bedroom Loft (y = 3.2, covering north half z = -6.2 .. -1.4, plus stair landing)
+  // Second Floor Landing & Bedroom Loft (y = 3.2, covering north half z = -6.3 .. -1.2)
   addFloorSlab(ctx, mats.woodPlank, -1.3, 3.2, -3.75, 9.6, 5.1, 0.26, true, true);
   addFloorSlab(ctx, mats.woodPlank, 4.45, 3.2, -3.75, 2.8, 5.1, 0.26, true, true);
   // Balcony timber balustrade overlooking the hearth hall (leaving stair gap at x = 3.6..5.4 clear!)
@@ -265,6 +272,37 @@ function buildCabinInterior(
       ledgerVisual.setCollected();
       actions.collectRelic('relic_cabin_ledger', 'Forester Watch Ledger');
       return 'Found: Forester Watch Ledger';
+    },
+  });
+
+  // Ground-floor found book on dining table
+  let cabinBookDone = actions.isFoundItemCollected('found_cabin_chronicles');
+  const cabinBookMesh = new THREE.Mesh(
+    new THREE.BoxGeometry(0.32, 0.08, 0.24),
+    new THREE.MeshLambertMaterial({ color: '#5c3c28', flatShading: true })
+  );
+  cabinBookMesh.position.set(0.4, 0.82, 0.2);
+  cabinBookMesh.rotation.y = 0.4;
+  cabinBookMesh.visible = !cabinBookDone;
+  root.add(cabinBookMesh);
+  interactables.push({
+    id: 'found_cabin_chronicles',
+    x: 0.4,
+    y: 0,
+    z: 0.2,
+    radius: 2.1,
+    kind: 'found_item',
+    label: 'Take Water-Stained Chronicles',
+    isAvailable: () => !cabinBookDone,
+    onActivate: () => {
+      const res = actions.collectFoundItem('found_cabin_chronicles', [
+        { itemId: 'damaged_book', quantity: 1 },
+      ]);
+      if (res.ok) {
+        cabinBookDone = true;
+        cabinBookMesh.visible = false;
+      }
+      return res.message;
     },
   });
 
@@ -373,8 +411,14 @@ function buildCottageInterior(
   addSolidWall(ctx, mats.mossStone, 0.4, -1.2, -7.9, 0.45, 5.1, 5.2);
   addSolidWall(ctx, mats.mossStone, 5.2, -1.2, -7.9, 0.45, 5.1, 5.2);
   addSolidWall(ctx, mats.mossStone, 2.8, -1.2, -10.5, 4.8, 5.1, 0.45);
+  // Side curbs flanking cellar stair descent so player cannot fall into side gap
+  addSolidWall(ctx, mats.mossStone, 1.25, -1.2, -6.3, 1.3, 1.45, 2.1, 0, false);
+  addSolidWall(ctx, mats.mossStone, 4.35, -1.2, -6.3, 1.3, 1.45, 2.1, 0, false);
   addCeilingSlab(ctx, mats.stone, 2.8, 2.7, -7.9, 5.2, 5.4);
-  addWalkableStaircase(ctx, mats.stone, 2.8, -6.3, 1.8, 2.0, -1.2, 0, 'z', 1, 5);
+  addWalkableStaircase(ctx, mats.stone, 2.8, -6.3, 1.85, 2.0, -1.2, 0, 'z', 1, 6, undefined, {
+    underSolid: true,
+    underCollider: false,
+  });
 
   const herbDone = actions.isRelicCollected('relic_cottage_charm');
   const charmVisual = addRelicProp(ctx, mats, 2.8, -1.2 + 0.72, -9.4, herbDone, '#7ad19c');
@@ -396,6 +440,31 @@ function buildCottageInterior(
       charmVisual.setCollected();
       actions.collectRelic('relic_cottage_charm', 'Rootbound Herb Charm');
       return 'Found: Rootbound Herb Charm';
+    },
+  });
+
+  // Sealed tallow flask & coins atop Elderwood chest
+  let cottageFlaskDone = actions.isFoundItemCollected('found_cottage_tallow');
+  const flaskVis = addRelicProp(ctx, mats, -3.8, 0.72, 1.8, cottageFlaskDone, '#98b0bd');
+  interactables.push({
+    id: 'found_cottage_tallow',
+    x: -3.8,
+    y: 0,
+    z: 1.8,
+    radius: 2.0,
+    kind: 'found_item',
+    label: 'Take Sealed Tallow Flask',
+    isAvailable: () => !cottageFlaskDone,
+    onActivate: () => {
+      const res = actions.collectFoundItem('found_cottage_tallow', [
+        { itemId: 'lantern_tallow_flask', quantity: 1 },
+        { itemId: 'old_coin', quantity: 2 },
+      ]);
+      if (res.ok) {
+        cottageFlaskDone = true;
+        flaskVis.setCollected();
+      }
+      return res.message;
     },
   });
 
@@ -482,24 +551,48 @@ function buildTowerInterior(
   addWallTorchSconce(ctx, mats, 0, 2.1, -3.92, 0, 1, 1.1, true, 6.2, 12);
   addWallTorchSconce(ctx, mats, -3.92, 2.1, 0, 1, 0, 2.5, true, 5.5, 11);
 
-  // Staircase 1: East side climbing South->North from y = 0 to y = 3.4 (Floor 2)
-  addWalkableStaircase(ctx, mats.stone, 2.9, 0.1, 1.7, 4.8, 0, 3.4, 'z', -1, 10, mats.iron);
+  // Staircase 1 (L-Turn Switchback with Mid-Landing at y = 1.7 -> opens cleanly onto NW Floor 2)
+  addWalkableStaircase(ctx, mats.stone, 3.05, 0.4, 1.75, 4.0, 0, 1.7, 'z', -1, 8, mats.iron, {
+    underSolid: true,
+    underCollider: true,
+    exposedSides: ['neg'],
+  });
+  addFloorSlab(ctx, mats.stone, 2.95, 1.7, -2.75, 2.2, 2.3, 0.28, true, true);
+  addWalkableStaircase(ctx, mats.stone, 0.2, -2.95, 1.75, 3.4, 1.7, 3.4, 'x', -1, 8, mats.iron, {
+    underSolid: true,
+    underCollider: true,
+    exposedSides: ['pos'],
+  });
 
-  // Floor 2: Mid Armory & Watch Quarters (y = 3.4, west + north + south slabs leaving stair opening x=2..4, z=-2.3..2.5 clear)
-  addFloorSlab(ctx, mats.woodPlank, -1.1, 3.4, 0, 6.0, 8.0, 0.24, true, true);
-  addFloorSlab(ctx, mats.woodPlank, 2.9, 3.4, -3.2, 2.0, 1.7, 0.24, true, true);
-  addFloorSlab(ctx, mats.woodPlank, 2.9, 3.4, 3.2, 2.0, 1.7, 0.24, true, true);
+  // Floor 2: Mid Armory & Watch Quarters (y = 3.4, full clear walk space + zero stairwell overlaps)
+  addFloorSlab(ctx, mats.woodPlank, -1.0, 3.4, 1.25, 6.0, 5.5, 0.24, true, true);
+  addFloorSlab(ctx, mats.woodPlank, -2.75, 3.4, -2.75, 2.5, 2.5, 0.24, true, true);
+  addFloorSlab(ctx, mats.woodPlank, 3.0, 3.4, 3.25, 2.0, 1.5, 0.24, true, true);
+  // Floor 2 stairwell guardrails (protecting open drop on Floor 2 without blocking arrivals!)
+  addSolidWall(ctx, mats.bark, 0.25, 3.4, -1.52, 3.5, 0.85, 0.14, 0, false);
+  addSolidWall(ctx, mats.bark, 2.02, 3.4, 0.5, 0.14, 0.85, 4.0, 0, false);
+
   addWallTorchSconce(ctx, mats, -3.92, 5.3, -1.2, 1, 0, 3.6, true, 6.0, 11);
-  addChestAndDrawer(ctx, mats, -3.0, 3.4, -3.2, 0);
-  addWeaponArmorRack(ctx, mats, -3.0, 3.4, 2.4, 0.8);
+  addChestAndDrawer(ctx, mats, 0.1, 3.4, 3.35, Math.PI);
+  addWeaponArmorRack(ctx, mats, -0.35, 3.4, 0.45, 0);
 
-  // Staircase 2: West side climbing North->South from y = 3.4 to y = 6.8 (Upper Belfry Deck!)
-  addWalkableStaircase(ctx, mats.woodPlank, -2.6, -0.2, 1.6, 4.6, 3.4, 6.8, 'z', 1, 10, mats.bark);
+  // Staircase 2 (L-Turn Switchback with Mid-Landing at y = 5.1 -> opens cleanly onto SE Floor 3)
+  addWalkableStaircase(ctx, mats.woodPlank, -3.05, 0.4, 1.75, 3.2, 3.4, 5.1, 'z', 1, 8, mats.bark, {
+    underSolid: true,
+    underCollider: true,
+    exposedSides: ['pos'],
+  });
+  addFloorSlab(ctx, mats.woodPlank, -2.95, 5.1, 2.95, 2.2, 1.9, 0.24, true, true);
+  addWalkableStaircase(ctx, mats.woodPlank, -0.2, 2.95, 1.75, 3.4, 5.1, 6.8, 'x', 1, 8, mats.bark, {
+    underSolid: true,
+    underCollider: true,
+    exposedSides: ['neg'],
+  });
 
   // Floor 3: Upper Octagonal Observation Belfry Deck (y = 6.8)
-  addFloorSlab(ctx, mats.stone, 0.9, 6.8, 0, 6.4, 8.2, 0.28, true, true);
-  addFloorSlab(ctx, mats.stone, -2.9, 6.8, 3.1, 1.8, 2.0, 0.28, true, true);
-  addFloorSlab(ctx, mats.stone, -2.9, 6.8, -3.1, 1.8, 2.0, 0.28, true, true);
+  addFloorSlab(ctx, mats.stone, 0.0, 6.8, -0.95, 8.0, 6.1, 0.28, true, true);
+  addFloorSlab(ctx, mats.stone, 2.75, 6.8, 3.05, 2.5, 1.9, 0.28, true, true);
+  addSolidWall(ctx, mats.mossStone, -0.25, 6.8, 2.08, 3.5, 0.85, 0.16, 0, false);
 
   // Belfry open arched pillars + stone crenellations + sky roof crown (y = 6.8..10.4)
   for (const [px, pz] of [
@@ -536,6 +629,30 @@ function buildTowerInterior(
       beacon.lightAnchor.baseIntensity = 8.5;
       actions.setBrazierLit('brazier_tower_beacon', true);
       return 'Ignited: Greywatch Signal Beacon';
+    },
+  });
+
+  // Floor 2 Greywatch Signet Ring on Armory chest
+  let towerSignetDone = actions.isFoundItemCollected('found_tower_signet');
+  const signetVis = addRelicProp(ctx, mats, 0.1, 3.4 + 0.72, 3.35, towerSignetDone, '#c8d0d6');
+  interactables.push({
+    id: 'found_tower_signet',
+    x: 0.1,
+    y: 3.4,
+    z: 3.35,
+    radius: 2.1,
+    kind: 'found_item',
+    label: 'Take Greywatch Signet Ring',
+    isAvailable: () => !towerSignetDone,
+    onActivate: () => {
+      const res = actions.collectFoundItem('found_tower_signet', [
+        { itemId: 'iron_signet', quantity: 1 },
+      ]);
+      if (res.ok) {
+        towerSignetDone = true;
+        signetVis.setCollected();
+      }
+      return res.message;
     },
   });
 
@@ -832,6 +949,31 @@ function buildCaveCragstone(
     },
   });
 
+  // Miner Satchel in Cragstone Cavern
+  let cragSatchelDone = actions.isFoundItemCollected('found_crag_coins');
+  const cragSatchelVis = addRelicProp(ctx, mats, 2.2, -0.8, -14.0, cragSatchelDone, '#d4a64a');
+  interactables.push({
+    id: 'found_crag_coins',
+    x: 2.2,
+    y: -0.8,
+    z: -14.0,
+    radius: 2.1,
+    kind: 'found_item',
+    label: 'Take Miner Satchel',
+    isAvailable: () => !cragSatchelDone,
+    onActivate: () => {
+      const res = actions.collectFoundItem('found_crag_coins', [
+        { itemId: 'coal_chunk', quantity: 2 },
+        { itemId: 'old_coin', quantity: 3 },
+      ]);
+      if (res.ok) {
+        cragSatchelDone = true;
+        cragSatchelVis.setCollected();
+      }
+      return res.message;
+    },
+  });
+
   return {
     id: 'cave_cragstone',
     name: 'Cragstone Cavern',
@@ -911,14 +1053,14 @@ function buildCaveWeeping(
     spawnYaw: 0,
   });
 
-  // Main Humid Grotto Cavern (z = -12 .. 4.2, width = 14m) with shallow underground water pool (y = -0.35)
-  addFloorSlab(ctx, mats.wetCaveRock, 0, -0.55, -4.0, 14.0, 16.4);
+  // Main Humid Grotto Cavern (z = -12 .. 4.2, width = 14m) with shallow walkable water bed (y = -0.30)
+  addFloorSlab(ctx, mats.wetCaveRock, 0, -0.3, -4.0, 14.0, 16.4);
   const pool = new THREE.Mesh(new THREE.PlaneGeometry(13.6, 16.0), mats.water);
   pool.rotation.x = -Math.PI * 0.5;
-  pool.position.set(0, -0.22, -4.0);
+  pool.position.set(0, -0.14, -4.0);
   root.add(pool);
 
-  makeRoomPerimeterWalls(ctx, mats.wetCaveRock, 0, -0.55, -4.0, 14.0, 16.4, 5.2, {
+  makeRoomPerimeterWalls(ctx, mats.wetCaveRock, 0, -0.3, -4.0, 14.0, 16.4, 5.0, {
     side: 'south',
     gapWidth: 6.4,
   });
@@ -926,15 +1068,15 @@ function buildCaveWeeping(
 
   // Walkable stepping stones & slick plank bridge winding through the flooded grotto
   const pads: [number, number, number, number][] = [
-    [0, 3.3, 3.0, 2.2],
-    [-1.4, 1.2, 2.3, 2.2],
-    [-2.5, -1.2, 2.4, 2.2],
-    [-0.9, -3.8, 2.6, 2.4],
-    [1.4, -6.2, 2.5, 2.3],
-    [0.0, -9.2, 5.6, 4.6], // Dry luminous fungal island at north end
+    [0, 3.3, 3.2, 2.4],
+    [-1.4, 1.2, 2.4, 2.3],
+    [-2.5, -1.2, 2.5, 2.3],
+    [-0.9, -3.8, 2.7, 2.5],
+    [1.4, -6.2, 2.6, 2.4],
+    [0.0, -9.2, 5.8, 4.8], // Dry luminous fungal island at north end
   ];
   for (const [px, pz, pw, pd] of pads) {
-    addFloorSlab(ctx, mats.mossStone, px, 0, pz, pw, pd, 0.55, true, false);
+    addFloorSlab(ctx, mats.mossStone, px, 0, pz, pw, pd, 0.32, true, false);
   }
 
   // Luminous fungal clusters lighting the wet grotto
@@ -1156,6 +1298,30 @@ function buildCaveAncient(
       crownVis.setCollected();
       actions.collectRelic('relic_barrow_crown', 'Barrow King Torque');
       return 'Found: Barrow King Torque';
+    },
+  });
+
+  // Sunken Barrow Seal in the pillared vestibule
+  let barrowSealDone = actions.isFoundItemCollected('found_barrow_seal');
+  const sealItemVis = addRelicProp(ctx, mats, -3.6, -1.6, -5.8, barrowSealDone, '#98b4c4');
+  interactables.push({
+    id: 'found_barrow_seal',
+    x: -3.6,
+    y: -1.6,
+    z: -5.8,
+    radius: 2.1,
+    kind: 'found_item',
+    label: 'Take Sunken Barrow Seal',
+    isAvailable: () => !barrowSealDone,
+    onActivate: () => {
+      const res = actions.collectFoundItem('found_barrow_seal', [
+        { itemId: 'barrow_seal', quantity: 1 },
+      ]);
+      if (res.ok) {
+        barrowSealDone = true;
+        sealItemVis.setCollected();
+      }
+      return res.message;
     },
   });
 
@@ -1509,7 +1675,10 @@ function buildDungeonVault(
   addStalactite(ctx, mats.caveRock, 3.8, 6.2, -8.5, 2.3, 0.48);
 
   // Walkable ancient stone aqueduct bridge spanning the chasm (z = -4.0 -> -12.0, descending smoothly 0 -> -1.4)
-  addWalkableStaircase(ctx, mats.carvedStone, 0, -8.0, 3.2, 8.0, -1.4, 0, 'z', 1, 10, mats.stone);
+  addWalkableStaircase(ctx, mats.carvedStone, 0, -8.0, 3.2, 8.0, -1.4, 0, 'z', 1, 10, mats.stone, {
+    underCollider: false,
+    exposedSides: ['neg', 'pos'],
+  });
 
   // 4. Lower Citadel Inner Sanctum (z = -12.0 .. -23.0, y = -1.4)
   addFloorSlab(ctx, mats.carvedStone, 0, -1.4, -17.5, 13.6, 11.0);
@@ -1566,6 +1735,31 @@ function buildDungeonVault(
     },
   });
 
+  // Citadel Armory Paychest on East Armory table
+  let vaultPaychestDone = actions.isFoundItemCollected('found_vault_armory');
+  const paychestVis = addRelicProp(ctx, mats, 10.8, 0.78, 4.8, vaultPaychestDone, '#d4a64a');
+  interactables.push({
+    id: 'found_vault_armory',
+    x: 10.8,
+    y: 0,
+    z: 4.8,
+    radius: 2.2,
+    kind: 'found_item',
+    label: 'Take Citadel Paychest',
+    isAvailable: () => !vaultPaychestDone,
+    onActivate: () => {
+      const res = actions.collectFoundItem('found_vault_armory', [
+        { itemId: 'old_coin', quantity: 5 },
+        { itemId: 'iron_ore', quantity: 2 },
+      ]);
+      if (res.ok) {
+        vaultPaychestDone = true;
+        paychestVis.setCollected();
+      }
+      return res.message;
+    },
+  });
+
   return {
     id: 'dungeon_vault',
     name: 'Sunken Citadel Vault',
@@ -1605,27 +1799,66 @@ export function buildInteriorById(
   id: InteriorId,
   textures: ProceduralTextures,
   saveState: ThornvaleSaveState,
-  onSaveChange: (updater: (prev: ThornvaleSaveState) => ThornvaleSaveState) => void
+  onSaveChange: (updater: (prev: ThornvaleSaveState) => ThornvaleSaveState) => void,
+  getLiveSaveState?: () => ThornvaleSaveState
 ): InteriorInstance {
+  const readState = getLiveSaveState ?? (() => saveState);
   const actions: InteriorPersistenceActions = {
-    isDoorOpen: (doorId) => !!saveState.openedDoors[doorId],
+    isDoorOpen: (doorId) => !!readState().openedDoors[doorId],
     setDoorOpen: (doorId, open) =>
       onSaveChange((prev) => ({
         ...prev,
         openedDoors: { ...prev.openedDoors, [doorId]: open },
       })),
-    isBrazierLit: (brazierId) => !!saveState.litBraziers[brazierId],
+    isBrazierLit: (brazierId) => !!readState().litBraziers[brazierId],
     setBrazierLit: (brazierId, lit) =>
       onSaveChange((prev) => ({
         ...prev,
         litBraziers: { ...prev.litBraziers, [brazierId]: lit },
       })),
-    isRelicCollected: (relicId) => !!saveState.collectedRelics[relicId],
+    isRelicCollected: (relicId) => !!readState().collectedRelics[relicId],
     collectRelic: (relicId) =>
       onSaveChange((prev) => ({
         ...prev,
         collectedRelics: { ...prev.collectedRelics, [relicId]: true },
       })),
+    isFoundItemCollected: (itemNodeId) => !!readState().collectedFoundItems[itemNodeId],
+    collectFoundItem: (itemNodeId, grants) => {
+      const live = readState();
+      if (live.collectedFoundItems[itemNodeId]) {
+        return { ok: false, message: 'Already collected.' };
+      }
+      const probe = addItemsToInventory(live.inventory, grants, true);
+      if (probe.addedTotal === 0 && probe.leftover > 0) {
+        return {
+          ok: false,
+          message: 'Your pack is full — make space before taking this.',
+        };
+      }
+      onSaveChange((prev) => {
+        const res = addItemsToInventory(prev.inventory, grants, true);
+        if (res.addedTotal === 0 && res.leftover > 0) return prev;
+        return {
+          ...prev,
+          inventory: res.nextSlots,
+          collectedFoundItems: {
+            ...prev.collectedFoundItems,
+            [itemNodeId]: true,
+          },
+        };
+      });
+      const summary = probe.addedItems
+        .map((it) => {
+          const def = ITEM_CATALOG[it.itemId];
+          const name = def ? def.name : it.itemId;
+          return it.quantity > 1 ? `${name} x${it.quantity}` : name;
+        })
+        .join(', ');
+      return {
+        ok: true,
+        message: `Found: ${summary || 'Item'}`,
+      };
+    },
   };
 
   switch (id) {

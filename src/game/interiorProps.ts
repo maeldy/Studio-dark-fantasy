@@ -278,8 +278,15 @@ export function addCeilingSlab(
   return mesh;
 }
 
+export interface StaircaseOptions {
+  underCollider?: boolean;
+  underSolid?: boolean;
+  exposedSides?: ('neg' | 'pos')[];
+  railColliderSides?: ('neg' | 'pos')[];
+}
+
 /**
- * Adds a true walkable staircase + smooth slope surface along X or Z.
+ * Adds a true walkable staircase + stepped tread surface along X or Z.
  * dir = +1 means height climbs from minCoord -> maxCoord along axis.
  */
 export function addWalkableStaircase(
@@ -294,16 +301,22 @@ export function addWalkableStaircase(
   axis: 'x' | 'z',
   dir: 1 | -1,
   stepCount = 9,
-  railMat?: THREE.Material
+  railMat?: THREE.Material,
+  options: StaircaseOptions = {}
 ): void {
   const stepRise = (yHigh - yLow) / stepCount;
   const stepRun = runLength / stepCount;
+  const useUnderCollider = options.underCollider ?? (yHigh - yLow > 0.65);
+  const useUnderSolid = options.underSolid ?? false;
+  const exposedSides = options.exposedSides ?? (options.railColliderSides ?? []);
 
   for (let i = 0; i < stepCount; i++) {
     const t = (i + 0.5) / stepCount;
     const offsetAlong = (dir > 0 ? t - 0.5 : 0.5 - t) * runLength;
     const stepTop = yLow + (i + 1) * stepRise;
-    const stepThickness = Math.max(0.16, stepRise + 0.08);
+    const stepThickness = useUnderSolid
+      ? Math.max(0.2, stepTop - yLow + 0.08)
+      : Math.max(0.18, stepRise + 0.08);
     const sx = axis === 'x' ? cx + offsetAlong : cx;
     const sz = axis === 'z' ? cz + offsetAlong : cz;
     const w = axis === 'x' ? stepRun * 1.04 : width;
@@ -314,6 +327,25 @@ export function addWalkableStaircase(
     tread.castShadow = true;
     tread.receiveShadow = true;
     ctx.root.add(tread);
+
+    // Block walking horizontally underneath stairs from lower floor while never obstructing climb
+    if (useUnderCollider && i >= 3) {
+      const safeClearance = Math.max(0.52, stepRise * 2.5);
+      const colMaxY = stepTop - safeClearance;
+      if (colMaxY > yLow + 0.22) {
+        ctx.boxColliders.push({
+          cx: sx,
+          cz: sz,
+          halfW: w * 0.5,
+          halfD: d * 0.5,
+          rotY: 0,
+          minY: yLow - 0.4,
+          maxY: colMaxY,
+          kind: 'building',
+          tag: 'stair_under',
+        });
+      }
+    }
   }
 
   if (railMat) {
@@ -336,6 +368,36 @@ export function addWalkableStaircase(
     }
   }
 
+  // Slender side balustrade colliders ONLY along exposed drop edges (never across top/bottom entrances)
+  for (const sKey of exposedSides) {
+    const side = sKey === 'neg' ? -1 : 1;
+    if (axis === 'z') {
+      ctx.boxColliders.push({
+        cx: cx + side * (width * 0.5 + 0.06),
+        cz,
+        halfW: 0.08,
+        halfD: runLength * 0.48,
+        rotY: 0,
+        minY: yLow - 0.2,
+        maxY: yHigh + 1.15,
+        kind: 'building',
+        tag: 'stair_rail',
+      });
+    } else {
+      ctx.boxColliders.push({
+        cx,
+        cz: cz + side * (width * 0.5 + 0.06),
+        halfW: runLength * 0.48,
+        halfD: 0.08,
+        rotY: 0,
+        minY: yLow - 0.2,
+        maxY: yHigh + 1.15,
+        kind: 'building',
+        tag: 'stair_rail',
+      });
+    }
+  }
+
   ctx.walkableSurfaces.push({
     minX: cx - (axis === 'x' ? runLength * 0.52 : width * 0.52),
     maxX: cx + (axis === 'x' ? runLength * 0.52 : width * 0.52),
@@ -344,6 +406,8 @@ export function addWalkableStaircase(
     yStart: dir > 0 ? yLow : yHigh,
     yEnd: dir > 0 ? yHigh : yLow,
     rampAxis: axis,
+    stepCount,
+    stairDir: dir,
   });
 }
 
