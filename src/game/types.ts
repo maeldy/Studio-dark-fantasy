@@ -1,4 +1,13 @@
 import * as THREE from 'three';
+import type {
+  ExplorationAtmosphereState,
+  ExplorationSaveData,
+} from '../types/exploration';
+import type {
+  GameplaySaveData,
+  PlacementPreviewState,
+  PlayerSurvivalState,
+} from '../types/gameplay';
 
 export type GraphicsQuality = 'low' | 'retro' | 'high';
 
@@ -165,7 +174,20 @@ export interface InteriorInstance {
 export interface InteractPrompt {
   id: string;
   label: string;
-  kind: 'portal' | 'door' | 'brazier' | 'relic' | 'secret' | 'npc' | 'resource' | 'found_item';
+  kind:
+    | 'portal'
+    | 'door'
+    | 'brazier'
+    | 'relic'
+    | 'secret'
+    | 'npc'
+    | 'resource'
+    | 'found_item'
+    | 'structure'
+    | 'chest'
+    | 'mechanism'
+    | 'lore'
+    | 'event';
 }
 
 export type ItemCategory =
@@ -217,7 +239,22 @@ export type ItemIconKey =
   | 'book'
   | 'relic'
   | 'seal'
-  | 'compass';
+  | 'compass'
+  | 'axe'
+  | 'pickaxe'
+  | 'spear'
+  | 'sword'
+  | 'shield'
+  | 'armor'
+  | 'cloak'
+  | 'poultice'
+  | 'ration'
+  | 'broth'
+  | 'ingot'
+  | 'cordage'
+  | 'key'
+  | 'scroll'
+  | 'map';
 
 export type ResourceToolRequirement = 'none' | 'axe' | 'pickaxe';
 
@@ -253,6 +290,8 @@ export interface ThornvaleSaveState {
   inventory: (InventorySlot | null)[];
   resourceStates: Record<string, ResourceNodeStateEntry>;
   collectedFoundItems: Record<string, boolean>;
+  gameplay?: GameplaySaveData;
+  exploration?: ExplorationSaveData;
 }
 
 export type EntityCategory = 'animal' | 'creature' | 'monster' | 'npc';
@@ -369,7 +408,12 @@ export interface EngineCallbacks {
   onSaveStateChange?: (state: ThornvaleSaveState) => void;
   onDialogueChange?: (dialogue: ActiveDialogue | null) => void;
   onPlayerVitalsChange?: (vitals: PlayerVitals) => void;
+  onSurvivalChange?: (survival: PlayerSurvivalState) => void;
+  onPlacementChange?: (placement: PlacementPreviewState) => void;
+  onStashModalChange?: (open: boolean) => void;
+  onRequestOpenWorkshop?: (tab?: 'craft' | 'build' | 'gear' | 'quests' | 'journal') => void;
   onDevModeChange?: (enabled: boolean) => void;
+  onAtmosphereChange?: (atmosphere: ExplorationAtmosphereState) => void;
 }
 
 export interface WandererRig {

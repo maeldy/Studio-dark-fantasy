@@ -1,3 +1,4 @@
+import { GAMEPLAY_ITEMS } from '../data/itemsGameplay';
 import { InventorySlot, ItemCategory, ItemDefinition } from './types';
 
 export const INVENTORY_CAPACITY = 24;
@@ -12,16 +13,16 @@ export const ACTIVE_INVENTORY_CATEGORIES: ItemCategoryMeta[] = [
   { id: 'material', label: 'Materials' },
   { id: 'plant', label: 'Plants' },
   { id: 'food', label: 'Food' },
+  { id: 'tool', label: 'Tools' },
+  { id: 'weapon', label: 'Weapons' },
+  { id: 'armor', label: 'Armor' },
+  { id: 'crafted', label: 'Crafted' },
   { id: 'misc', label: 'Misc' },
   { id: 'special', label: 'Special' },
 ];
 
 export const RESERVED_FUTURE_CATEGORIES: ItemCategoryMeta[] = [
-  { id: 'weapon', label: 'Weapons' },
-  { id: 'armor', label: 'Armor' },
-  { id: 'tool', label: 'Tools' },
   { id: 'equipment', label: 'Equipment' },
-  { id: 'crafted', label: 'Crafted' },
   { id: 'quest', label: 'Quest' },
 ];
 
@@ -436,6 +437,7 @@ export const ITEM_CATALOG: Record<string, ItemDefinition> = {
     icon: 'pottery',
     rarity: 'uncommon',
   },
+  ...GAMEPLAY_ITEMS,
 };
 
 export function createEmptyInventory(capacity = INVENTORY_CAPACITY): (InventorySlot | null)[] {
@@ -654,3 +656,51 @@ export function removeInventorySlotItem(
   }
   return next;
 }
+
+export function hasInventoryIngredients(
+  slots: (InventorySlot | null)[],
+  requirements: { itemId: string; quantity: number }[]
+): boolean {
+  for (let i = 0; i < requirements.length; i++) {
+    const req = requirements[i];
+    if (req.quantity <= 0) continue;
+    if (countInventoryItem(slots, req.itemId) < req.quantity) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Atomically deducts a list of required items across inventory slots.
+ * Returns null if any ingredient is insufficient.
+ */
+export function consumeInventoryIngredients(
+  currentSlots: (InventorySlot | null)[],
+  requirements: { itemId: string; quantity: number }[]
+): (InventorySlot | null)[] | null {
+  if (!hasInventoryIngredients(currentSlots, requirements)) {
+    return null;
+  }
+  const next = cloneInventorySlots(currentSlots);
+  for (let i = 0; i < requirements.length; i++) {
+    const req = requirements[i];
+    let remaining = Math.floor(req.quantity);
+    if (remaining <= 0) continue;
+    for (let sIdx = 0; sIdx < next.length && remaining > 0; sIdx++) {
+      const slot = next[sIdx];
+      if (!slot || slot.itemId !== req.itemId) continue;
+      const take = Math.min(slot.quantity, remaining);
+      slot.quantity -= take;
+      remaining -= take;
+      if (slot.quantity <= 0) {
+        next[sIdx] = null;
+      }
+    }
+    if (remaining > 0) {
+      return null;
+    }
+  }
+  return next;
+}
+

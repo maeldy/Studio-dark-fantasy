@@ -1,0 +1,131 @@
+import { BuildableStructureDef, BuildableStructureId } from '../types/gameplay';
+
+export const BUILDABLE_STRUCTURES: Record<BuildableStructureId, BuildableStructureDef> = {
+  campfire: {
+    id: 'campfire',
+    name: 'Stone Campfire',
+    description:
+      'Ringed hearth of fieldstone and seasoned wood. Unlocks smelting & cooking, restores Warmth, and pushes back the dark.',
+    costs: [
+      { itemId: 'rough_stone', quantity: 4 },
+      { itemId: 'branch', quantity: 4 },
+    ],
+    footprintRadius: 0.95,
+    colliderRadius: 0.62,
+    colliderHeight: 0.75,
+    maxSlope: 0.45,
+    allowOverworld: true,
+    allowInterior: false,
+    providesStation: 'campfire',
+    warmthRadius: 5.5,
+    lightColor: '#ff8a34',
+    lightIntensity: 2.35,
+    lightDistance: 13.5,
+    interactionVerb: 'Use Hearth',
+  },
+  workbench: {
+    id: 'workbench',
+    name: 'Timber Workbench',
+    description:
+      'Mortised crafting bench with iron vise. Unlocks forged iron weapons, heavy tools, shields, and armor.',
+    costs: [
+      { itemId: 'deadwood', quantity: 4 },
+      { itemId: 'rough_stone', quantity: 2 },
+      { itemId: 'branch', quantity: 2 },
+    ],
+    footprintRadius: 1.05,
+    colliderRadius: 0.8,
+    colliderHeight: 1.0,
+    maxSlope: 0.42,
+    allowOverworld: true,
+    allowInterior: true,
+    providesStation: 'workbench',
+    interactionVerb: 'Use Workbench',
+  },
+  storage_chest: {
+    id: 'storage_chest',
+    name: 'Iron-Bound Chest',
+    description:
+      'Reinforced chest linked to your persistent 18-slot camp stash across all Thornvale regions.',
+    costs: [
+      { itemId: 'deadwood', quantity: 3 },
+      { itemId: 'rough_stone', quantity: 2 },
+      { itemId: 'plant_fiber', quantity: 2 },
+    ],
+    footprintRadius: 0.8,
+    colliderRadius: 0.56,
+    colliderHeight: 0.75,
+    maxSlope: 0.44,
+    allowOverworld: true,
+    allowInterior: true,
+    interactionVerb: 'Open Stash Chest',
+  },
+  watch_lantern: {
+    id: 'watch_lantern',
+    name: 'Watch Lantern Post',
+    description:
+      'Tall timber beacon post hung with an iron ember lantern. Marks trails and casts warm shelter light.',
+    costs: [
+      { itemId: 'branch', quantity: 3 },
+      { itemId: 'pine_resin', quantity: 1 },
+      { itemId: 'rough_stone', quantity: 1 },
+    ],
+    footprintRadius: 0.65,
+    colliderRadius: 0.28,
+    colliderHeight: 2.5,
+    maxSlope: 0.5,
+    allowOverworld: true,
+    allowInterior: false,
+    warmthRadius: 3.2,
+    lightColor: '#ffa348',
+    lightIntensity: 1.9,
+    lightDistance: 12.0,
+    interactionVerb: 'Inspect Beacon',
+  },
+  timber_palisade: {
+    id: 'timber_palisade',
+    name: 'Timber Palisade',
+    description:
+      'Sharpened defensive stake wall anchored in fieldstone. Physically blocks wandering monsters and beasts.',
+    costs: [
+      { itemId: 'small_log', quantity: 2 },
+      { itemId: 'branch', quantity: 3 },
+    ],
+    footprintRadius: 1.2,
+    colliderRadius: 0.92,
+    colliderHeight: 2.1,
+    maxSlope: 0.48,
+    allowOverworld: true,
+    allowInterior: false,
+    interactionVerb: 'Inspect Palisade',
+  },
+  field_shelter: {
+    id: 'field_shelter',
+    name: 'Woodland Lean-To',
+    description:
+      'Bark-shingled timber shelter. Restores Vitality, Stamina, and Warmth quickly when resting under its eaves.',
+    costs: [
+      { itemId: 'small_log', quantity: 2 },
+      { itemId: 'deadwood', quantity: 3 },
+      { itemId: 'tree_bark', quantity: 3 },
+      { itemId: 'plant_fiber', quantity: 4 },
+    ],
+    footprintRadius: 1.45,
+    colliderRadius: 1.15,
+    colliderHeight: 2.1,
+    maxSlope: 0.38,
+    allowOverworld: true,
+    allowInterior: false,
+    warmthRadius: 4.5,
+    interactionVerb: 'Rest at Shelter',
+  },
+};
+
+export const BUILDABLE_STRUCTURE_LIST: BuildableStructureDef[] = [
+  BUILDABLE_STRUCTURES.campfire,
+  BUILDABLE_STRUCTURES.workbench,
+  BUILDABLE_STRUCTURES.storage_chest,
+  BUILDABLE_STRUCTURES.watch_lantern,
+  BUILDABLE_STRUCTURES.timber_palisade,
+  BUILDABLE_STRUCTURES.field_shelter,
+];

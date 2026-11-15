@@ -1,9 +1,45 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { MONSTER_LOOT_TABLE } from '../data/itemsGameplay';
+import { BUILDABLE_STRUCTURES } from '../data/structures';
+import { BuildingSystem, BuildActionResult } from '../systems/BuildingSystem';
+import { CraftingSystem, CraftResult } from '../systems/CraftingSystem';
+import {
+  CombatDerivedStats,
+  ConsumeResult,
+  EquipmentSystem,
+  EquipResult,
+} from '../systems/EquipmentSystem';
+import {
+  createDefaultExplorationSaveData,
+  evaluateExteriorAtmosphereProfile,
+  ExplorationInteractResult,
+  ExplorationSystem,
+  ExteriorAtmosphereProfile,
+} from '../systems/ExplorationSystem';
+import { QuestSystem } from '../systems/QuestSystem';
+import { SurvivalSystem } from '../systems/SurvivalSystem';
+import {
+  DevExplorationSnapshot,
+  DynamicEventKind,
+  DynamicEventUiSummary,
+  ExplorationAtmosphereState,
+} from '../types/exploration';
+import {
+  BuildableStructureId,
+  GearSlot,
+  NearbyStructureInfo,
+  PlacementPreviewState,
+  PlayerSurvivalState,
+  StructureEnvironmentId,
+} from '../types/gameplay';
 import { ForestAudioSystem } from './audio';
 import { DEV_TELEPORT_POINTS } from './devLocations';
 import { buildInteriorById } from './interiors';
 import {
+  addItemsToInventory,
+  INVENTORY_CAPACITY,
+  ITEM_CATALOG,
   moveOrSwapInventorySlot,
   removeInventorySlotItem,
   splitInventorySlot,
@@ -12,9 +48,11 @@ import { createWandererCharacter } from './models';
 import {
   clearWorldSave,
   cloneSaveState,
+  createDefaultGameplaySave,
   DISCOVERABLE_CATALOG,
   loadWorldSave,
   persistWorldSave,
+  STASH_CAPACITY,
   TOTAL_DISCOVERABLE_PLACES,
   WORLD_SEED,
 } from './persistence';
@@ -43,6 +81,7 @@ import {
   InteriorId,
   InteriorInstance,
   InteractPrompt,
+  InventorySlot,
   LightAnchor,
   PlayerVitals,
   PortalLink,
@@ -146,6 +185,23 @@ const EXTERIOR_BG = new THREE.Color('#66737d');
 const EXTERIOR_FOG_COLOR = '#66737d';
 const EXTERIOR_FOG_DENSITY = 0.0235;
 
+const _extAtmProfile: ExteriorAtmosphereProfile = {
+  skyColor: new THREE.Color('#66737d'),
+  fogColor: new THREE.Color('#66737d'),
+  fogDensity: 0.0235,
+  ambientColor: new THREE.Color('#8f9ca6'),
+  ambientIntensity: 0.55,
+  hemiSky: new THREE.Color('#bfd0de'),
+  hemiGround: new THREE.Color('#435045'),
+  hemiIntensity: 1.65,
+  keyColor: new THREE.Color('#dce4eb'),
+  keyIntensity: 1.75,
+  rimIntensity: 0.72,
+  exposure: 1.25,
+  lanternDistance: 9.0,
+  lanternBoost: 1.0,
+};
+
 interface QualityProfile {
   targetHeight: number;
   shadows: boolean;
@@ -221,6 +277,17 @@ type ActiveInteractAction =
       nodeId: string;
       isFoundItem: boolean;
       prompt: InteractPrompt;
+    }
+  | {
+      kind: 'structure';
+      structureInfo: NearbyStructureInfo;
+      prompt: InteractPrompt;
+    }
+  | {
+      kind: 'exploration';
+      expKind: 'chest' | 'mechanism' | 'lore' | 'event';
+      run: () => ExplorationInteractResult;
+      prompt: InteractPrompt;
     };
 
 export class ForestExplorerEngine {
@@ -238,6 +305,9 @@ export class ForestExplorerEngine {
   private overworldColliderGrid: SpatialColliderIndex;
   private nearbyCirclesBuf: CircleCollider[] = [];
   private nearbyBoxesBuf: BoxCollider[] = [];
+  private playerDynCirclesBuf: CircleCollider[] = [];
+  private playerBoxCollidersBuf: BoxCollider[] = [];
+  private ecosystemCirclesBuf: CircleCollider[] = [];
   private activeInterior: InteriorInstance | null = null;
   private playerRig: WandererRig;
 
@@ -253,6 +323,13 @@ export class ForestExplorerEngine {
   private saveState: ThornvaleSaveState;
   private ecosystem: EcosystemManager;
   private resourceManager: WorldResourceManager;
+  private equipmentSystem: EquipmentSystem;
+  private craftingSystem: CraftingSystem;
+  private buildingSystem: BuildingSystem;
+  private survivalSystem: SurvivalSystem;
+  private questSystem: QuestSystem;
+  private explorationSystem: ExplorationSystem;
+  private lastPlacementKey = '';
 
   private quality: GraphicsQuality;
   private vhsEnabled = true;
@@ -482,6 +559,23 @@ export class ForestExplorerEngine {
     this.playerRig.root.rotation.y = this.playerYaw;
     this.scene.add(this.playerRig.root);
 
+    this.equipmentSystem = new EquipmentSystem(this.playerRig, this.textures);
+    this.craftingSystem = new CraftingSystem();
+    this.buildingSystem = new BuildingSystem(this.scene, this.textures);
+    this.survivalSystem = new SurvivalSystem();
+    this.questSystem = new QuestSystem();
+    this.explorationSystem = new ExplorationSystem(
+      this.scene,
+      this.textures,
+      this.audio,
+      this.saveState.exploration ?? createDefaultExplorationSaveData()
+    );
+
+    this.equipmentSystem.syncFromSave(this.saveState);
+    this.buildingSystem.syncForEnvironment('overworld', this.saveState);
+    this.explorationSystem.syncForEnvironment('overworld', this.saveState);
+    this.applyExteriorEnvironment();
+
     this.smoothLookAt.set(this.playerPos.x, this.playerPos.y + 1.42, this.playerPos.z);
     this.updateCameraTransform(1.0);
 
@@ -493,7 +587,10 @@ export class ForestExplorerEngine {
     this.callbacks.onZoneChange?.(this.currentZoneName);
     this.callbacks.onQualityChange?.(this.quality);
     this.callbacks.onSaveStateChange?.(this.saveState);
+    this.callbacks.onAtmosphereChange?.(this.explorationSystem.getAtmosphereState());
     this.emitVitals();
+    this.emitSurvival();
+    this.emitPlacementIfChanged(true);
     this.startLoop();
   }
 
@@ -565,9 +662,15 @@ export class ForestExplorerEngine {
       return;
     }
     if (this.inputPaused) return;
+    if (e.code === 'Escape' && this.buildingSystem.isPlacementActive()) {
+      this.cancelStructurePlacement();
+      return;
+    }
     if ((e.code === 'KeyF' || e.code === 'Enter') && !e.repeat) {
       if (this.activeDialogue) {
         this.advanceDialogue();
+      } else if (this.buildingSystem.isPlacementActive()) {
+        this.confirmStructurePlacement();
       } else {
         this.triggerInteract();
       }
@@ -579,14 +682,32 @@ export class ForestExplorerEngine {
       }
       return;
     }
+    if (e.code === 'KeyT' && !e.repeat && this.buildingSystem.isPlacementActive()) {
+      this.rotateStructurePlacement();
+      return;
+    }
+    if (
+      e.code === 'KeyX' &&
+      !e.repeat &&
+      !this.activeDialogue &&
+      !this.buildingSystem.isPlacementActive() &&
+      this.currentInteractAction?.kind === 'structure'
+    ) {
+      this.dismantleStructure(this.currentInteractAction.structureInfo.record.id);
+      return;
+    }
     if (this.activeDialogue) return;
 
     if (e.code === 'Space' && !e.repeat) {
       this.triggerJump();
     } else if (e.code === 'KeyL') {
       this.toggleLantern();
-    } else if (e.code === 'KeyR') {
-      this.resetCamera();
+    } else if (e.code === 'KeyR' && !e.repeat) {
+      if (this.buildingSystem.isPlacementActive()) {
+        this.rotateStructurePlacement();
+      } else {
+        this.resetCamera();
+      }
     } else if ((e.code === 'KeyV' || e.code === 'KeyJ') && !e.repeat) {
       this.triggerAttack();
     }
@@ -618,8 +739,12 @@ export class ForestExplorerEngine {
     this.isDraggingCamera = false;
     if (wasDragging && e.button === 0 && e.target === this.renderer.domElement) {
       const dragDist = Math.hypot(e.clientX - this.pointerDownX, e.clientY - this.pointerDownY);
-      if (dragDist < 5 && !this.activeDialogue) {
-        this.triggerAttack();
+      if (dragDist < 5 && !this.activeDialogue && !this.inputPaused) {
+        if (this.buildingSystem.isPlacementActive()) {
+          this.confirmStructurePlacement();
+        } else {
+          this.triggerAttack();
+        }
       }
     }
   };
@@ -727,6 +852,10 @@ export class ForestExplorerEngine {
 
   public triggerInteract(): void {
     if (this.transitionPhase !== 'idle') return;
+    if (this.buildingSystem.isPlacementActive()) {
+      this.confirmStructurePlacement();
+      return;
+    }
     if (this.activeDialogue) {
       this.advanceDialogue();
       return;
@@ -750,17 +879,48 @@ export class ForestExplorerEngine {
         this.updateInteractionPrompt();
       }
     } else if (this.currentInteractAction.kind === 'resource') {
+      const combatStats = this.equipmentSystem.getCombatStats(this.getActiveSaveState());
       const res = this.resourceManager.harvestNode(
         this.currentInteractAction.nodeId,
-        this.getActiveSaveState()
+        this.getActiveSaveState(),
+        combatStats.ownedTools
       );
       this.audio.playGatherCue(res.cueKind);
       if (res.success) {
+        this.gatherAnimTimer = 0.24;
+        this.questSystem.recordGather(1, this.updateSaveState);
+      }
+      if (res.message) {
+        this.showStatusMessage(res.message);
+      }
+      this.updateInteractionPrompt();
+    } else if (this.currentInteractAction.kind === 'structure') {
+      const { record, def } = this.currentInteractAction.structureInfo;
+      if (record.structureId === 'campfire' || record.structureId === 'workbench') {
+        this.audio.playInteractCue(record.structureId === 'campfire' ? 'brazier' : 'door');
+        this.callbacks.onRequestOpenWorkshop?.('craft');
+      } else if (record.structureId === 'storage_chest') {
+        this.audio.playInteractCue('door');
+        this.callbacks.onStashModalChange?.(true);
+      } else if (record.structureId === 'field_shelter') {
+        this.playerHp = this.maxPlayerHp;
+        this.survivalSystem.applyRestRestore();
+        this.audio.playInteractCue('brazier');
+        this.emitVitals();
+        this.emitSurvival();
+        this.showStatusMessage('Rested at Woodland Lean-To — Vitality, Stamina & Warmth restored');
+      } else {
+        this.showStatusMessage(`${def.name}: ${def.description}`);
+      }
+    } else if (this.currentInteractAction.kind === 'exploration') {
+      const res = this.currentInteractAction.run();
+      if (this.currentInteractAction.expKind === 'chest' || this.currentInteractAction.expKind === 'event') {
         this.gatherAnimTimer = 0.24;
       }
       if (res.message) {
         this.showStatusMessage(res.message);
       }
+      this.callbacks.onAtmosphereChange?.(this.explorationSystem.getAtmosphereState());
       this.updateInteractionPrompt();
     } else {
       const cueKind = this.currentInteractAction.cueKind;
@@ -801,26 +961,61 @@ export class ForestExplorerEngine {
 
   public triggerAttack(): void {
     if (this.transitionPhase !== 'idle' || this.activeDialogue || this.inputPaused) return;
+    if (this.buildingSystem.isPlacementActive()) {
+      this.confirmStructurePlacement();
+      return;
+    }
     if (this.attackCooldownTimer > 0) return;
 
     this.attackAnimTimer = 0.34;
     this.attackCooldownTimer = 0.48;
     this.audio.playEcosystemCue('sword_swing');
+    this.survivalSystem.spendAttackStamina();
+    this.emitSurvival();
 
+    const combatStats = this.equipmentSystem.getCombatStats(this.getActiveSaveState());
     const res = this.ecosystem.performPlayerAttack(
       !!this.activeInterior,
       this.playerPos.x,
       this.playerPos.y,
       this.playerPos.z,
       this.playerYaw,
-      22
+      combatStats.attackDamage
     );
     if (res.hitCount > 0) {
       this.combatCooldownTimer = 4.5;
       this.emitVitals();
     }
-    if (res.killedNames.length > 0) {
-      this.showStatusMessage(`Vanquished: ${res.killedNames[0]}`);
+    if (res.killedEntities.length > 0) {
+      const lootBatch: { itemId: string; quantity: number }[] = [];
+      for (let i = 0; i < res.killedEntities.length; i++) {
+        const table = MONSTER_LOOT_TABLE[res.killedEntities[i].species];
+        if (!table) continue;
+        for (let j = 0; j < table.length; j++) {
+          const drop = table[j];
+          if (Math.random() <= drop.chance) {
+            lootBatch.push({ itemId: drop.itemId, quantity: drop.quantity });
+          }
+        }
+      }
+
+      let gainedSummary = '';
+      if (lootBatch.length > 0) {
+        let addedAny = 0;
+        this.updateSaveState((prev) => {
+          const added = addItemsToInventory(prev.inventory, lootBatch, false);
+          addedAny = added.addedTotal;
+          if (added.addedTotal === 0) return prev;
+          return { ...prev, inventory: added.nextSlots };
+        });
+        if (addedAny > 0) {
+          const firstDef = ITEM_CATALOG[lootBatch[0].itemId];
+          gainedSummary = firstDef ? ` (+${firstDef.name})` : '';
+        }
+      }
+
+      this.questSystem.recordDefeat(res.killedEntities.length, this.updateSaveState);
+      this.showStatusMessage(`Vanquished: ${res.killedNames[0]}${gainedSummary}`);
     }
   }
 
@@ -839,6 +1034,352 @@ export class ForestExplorerEngine {
 
   private emitVitals(): void {
     this.callbacks.onPlayerVitalsChange?.(this.getPlayerVitals());
+  }
+
+  // --- Gameplay Expansion API (Crafting, Building, Equipment, Stash, Quests) ---
+
+  public getSurvivalState(): PlayerSurvivalState {
+    return this.survivalSystem.getState();
+  }
+
+  private emitSurvival(): void {
+    this.callbacks.onSurvivalChange?.(this.survivalSystem.getState());
+  }
+
+  public getPlacementState(): PlacementPreviewState {
+    return this.buildingSystem.getPlacementPreviewState();
+  }
+
+  private emitPlacementIfChanged(force = false): void {
+    const p = this.buildingSystem.getPlacementPreviewState();
+    const key = `${p.active}:${p.structureId ?? ''}:${p.valid}:${p.reason}:${p.rotY.toFixed(2)}`;
+    if (force || key !== this.lastPlacementKey) {
+      this.lastPlacementKey = key;
+      this.callbacks.onPlacementChange?.(p);
+    }
+  }
+
+  public getActiveEnvironmentId(): StructureEnvironmentId {
+    return this.activeInterior ? this.activeInterior.id : 'overworld';
+  }
+
+  public getCombatStats(): CombatDerivedStats {
+    return this.equipmentSystem.getCombatStats(this.getActiveSaveState());
+  }
+
+  public craftRecipe(recipeId: string): CraftResult {
+    const stations = this.buildingSystem.getNearbyStations(
+      this.playerPos.x,
+      this.playerPos.y,
+      this.playerPos.z
+    );
+    const res = this.craftingSystem.craftRecipe(
+      recipeId,
+      () => this.getActiveSaveState(),
+      this.updateSaveState,
+      stations
+    );
+    if (res.success && res.recipe) {
+      this.questSystem.recordCraft(res.recipe.outputItemId, this.updateSaveState);
+      this.audio.playGatherCue('mineral');
+    }
+    if (res.message) {
+      this.showStatusMessage(res.message);
+    }
+    return res;
+  }
+
+  public startStructurePlacement(structureId: BuildableStructureId): boolean {
+    if (this.transitionPhase !== 'idle' || this.activeDialogue) return false;
+    const ok = this.buildingSystem.startPlacement(structureId);
+    if (!ok) return false;
+    this.updateGhostPlacement();
+    this.emitPlacementIfChanged(true);
+    const def = BUILDABLE_STRUCTURES[structureId];
+    this.showStatusMessage(`Placing ${def.name} — [F/Click] Place, [R/T] Rotate, [Esc] Cancel`);
+    return true;
+  }
+
+  public rotateStructurePlacement(): void {
+    if (!this.buildingSystem.isPlacementActive()) return;
+    this.buildingSystem.rotatePlacement(Math.PI / 4);
+    this.updateGhostPlacement();
+    this.emitPlacementIfChanged(true);
+  }
+
+  public cancelStructurePlacement(): void {
+    if (!this.buildingSystem.isPlacementActive()) return;
+    this.buildingSystem.cancelPlacement();
+    this.emitPlacementIfChanged(true);
+  }
+
+  public confirmStructurePlacement(): BuildActionResult {
+    const envId = this.getActiveEnvironmentId();
+    const portals = this.activeInterior ? this.activeInterior.portals : this.world.portals;
+    this.updateGhostPlacement();
+
+    const staticCircles = this.getStaticCirclesForPlacement(
+      this.playerPos.x,
+      this.playerPos.z
+    );
+    const staticBoxes = this.activeInterior
+      ? this.activeInterior.boxColliders
+      : this.nearbyBoxesBuf;
+
+    const res = this.buildingSystem.confirmPlacement(
+      envId,
+      staticCircles,
+      staticBoxes,
+      portals,
+      this.playerPos.x,
+      this.playerPos.y,
+      this.playerPos.z,
+      () => this.getActiveSaveState(),
+      this.updateSaveState
+    );
+
+    if (res.success && res.record) {
+      this.questSystem.recordBuild(res.record.structureId, this.updateSaveState);
+      this.audio.playTransitionCue(
+        res.record.structureId === 'campfire' ? 'stone' : 'wood'
+      );
+      this.emitPlacementIfChanged(true);
+      this.updateInteractionPrompt();
+    } else {
+      this.emitPlacementIfChanged(true);
+    }
+    if (res.message) {
+      this.showStatusMessage(res.message);
+    }
+    return res;
+  }
+
+  public dismantleStructure(recordId: string): BuildActionResult {
+    const res = this.buildingSystem.dismantleStructure(
+      recordId,
+      () => this.getActiveSaveState(),
+      this.updateSaveState
+    );
+    if (res.success) {
+      this.audio.playTransitionCue('wood');
+      this.updateInteractionPrompt();
+    }
+    if (res.message) {
+      this.showStatusMessage(res.message);
+    }
+    return res;
+  }
+
+  public equipInventorySlot(slotIdx: number): EquipResult {
+    const res = this.equipmentSystem.equipFromInventorySlot(
+      slotIdx,
+      () => this.getActiveSaveState(),
+      this.updateSaveState
+    );
+    if (res.success) {
+      this.audio.playGatherCue('curio');
+    }
+    if (res.message) {
+      this.showStatusMessage(res.message);
+    }
+    return res;
+  }
+
+  public unequipGearSlot(slot: GearSlot): EquipResult {
+    const res = this.equipmentSystem.unequipSlot(
+      slot,
+      () => this.getActiveSaveState(),
+      this.updateSaveState
+    );
+    if (res.success) {
+      this.audio.playGatherCue('curio');
+    }
+    if (res.message) {
+      this.showStatusMessage(res.message);
+    }
+    return res;
+  }
+
+  public useInventorySlot(slotIdx: number): ConsumeResult {
+    const res = this.equipmentSystem.useConsumableSlot(
+      slotIdx,
+      () => this.getActiveSaveState(),
+      this.updateSaveState
+    );
+    if (res.success && res.effect) {
+      this.playerHp = Math.min(this.maxPlayerHp, this.playerHp + res.effect.healHp);
+      this.survivalSystem.applyConsumableRestore(
+        res.effect.restoreStamina,
+        res.effect.restoreWarmth
+      );
+      this.audio.playGatherCue('foliage');
+      this.emitVitals();
+      this.emitSurvival();
+    }
+    if (res.message) {
+      this.showStatusMessage(res.message);
+    }
+    return res;
+  }
+
+  public transferPackToStash(packIdx: number, targetStashIdx?: number): boolean {
+    if (packIdx < 0 || packIdx >= INVENTORY_CAPACITY) return false;
+    let transferred = false;
+    this.updateSaveState((prev) => {
+      const pack = prev.inventory.map((s) => (s ? { ...s } : null));
+      const src = pack[packIdx];
+      if (!src) return prev;
+      const gp = prev.gameplay ?? createDefaultGameplaySave();
+      const stash = gp.stash.map((s) => (s ? { ...s } : null));
+      while (stash.length < STASH_CAPACITY) stash.push(null);
+
+      if (targetStashIdx === undefined) {
+        const added = addItemsToInventory(
+          stash,
+          [{ itemId: src.itemId, quantity: src.quantity }],
+          true
+        );
+        if (added.addedTotal <= 0) return prev;
+        transferred = true;
+        return {
+          ...prev,
+          inventory: removeInventorySlotItem(pack, packIdx, added.addedTotal),
+          gameplay: { ...gp, stash: added.nextSlots },
+        };
+      }
+
+      if (targetStashIdx < 0 || targetStashIdx >= STASH_CAPACITY) return prev;
+      const dst = stash[targetStashIdx];
+      const def = ITEM_CATALOG[src.itemId];
+      const maxStack = def ? def.maxStack : 99;
+      if (!dst) {
+        stash[targetStashIdx] = { ...src };
+        pack[packIdx] = null;
+      } else if (dst.itemId === src.itemId && dst.quantity < maxStack) {
+        const room = maxStack - dst.quantity;
+        const moveAmt = Math.min(room, src.quantity);
+        dst.quantity += moveAmt;
+        if (src.quantity - moveAmt <= 0) pack[packIdx] = null;
+        else src.quantity -= moveAmt;
+      } else {
+        stash[targetStashIdx] = { ...src };
+        pack[packIdx] = { ...dst };
+      }
+      transferred = true;
+      return { ...prev, inventory: pack, gameplay: { ...gp, stash } };
+    });
+    if (!transferred) {
+      this.showStatusMessage('Storage chest is full.');
+    }
+    return transferred;
+  }
+
+  public transferStashToPack(stashIdx: number, targetPackIdx?: number): boolean {
+    if (stashIdx < 0 || stashIdx >= STASH_CAPACITY) return false;
+    let transferred = false;
+    this.updateSaveState((prev) => {
+      const gp = prev.gameplay ?? createDefaultGameplaySave();
+      const stash: (InventorySlot | null)[] = gp.stash.map((s) => (s ? { ...s } : null));
+      while (stash.length < STASH_CAPACITY) stash.push(null);
+      const src = stash[stashIdx];
+      if (!src) return prev;
+      const pack = prev.inventory.map((s) => (s ? { ...s } : null));
+
+      if (targetPackIdx === undefined) {
+        const added = addItemsToInventory(
+          pack,
+          [{ itemId: src.itemId, quantity: src.quantity }],
+          true
+        );
+        if (added.addedTotal <= 0) return prev;
+        transferred = true;
+        return {
+          ...prev,
+          inventory: added.nextSlots,
+          gameplay: {
+            ...gp,
+            stash: removeInventorySlotItem(stash, stashIdx, added.addedTotal),
+          },
+        };
+      }
+
+      if (targetPackIdx < 0 || targetPackIdx >= INVENTORY_CAPACITY) return prev;
+      const dst = pack[targetPackIdx];
+      const def = ITEM_CATALOG[src.itemId];
+      const maxStack = def ? def.maxStack : 99;
+      if (!dst) {
+        pack[targetPackIdx] = { ...src };
+        stash[stashIdx] = null;
+      } else if (dst.itemId === src.itemId && dst.quantity < maxStack) {
+        const room = maxStack - dst.quantity;
+        const moveAmt = Math.min(room, src.quantity);
+        dst.quantity += moveAmt;
+        if (src.quantity - moveAmt <= 0) stash[stashIdx] = null;
+        else src.quantity -= moveAmt;
+      } else {
+        pack[targetPackIdx] = { ...src };
+        stash[stashIdx] = { ...dst };
+      }
+      transferred = true;
+      return { ...prev, inventory: pack, gameplay: { ...gp, stash } };
+    });
+    if (!transferred) {
+      this.showStatusMessage('Traveler Pack is full.');
+    }
+    return transferred;
+  }
+
+  public claimQuestReward(questId: string): { success: boolean; message: string } {
+    const res = this.questSystem.claimReward(
+      questId,
+      () => this.getActiveSaveState(),
+      this.updateSaveState
+    );
+    if (res.success) {
+      this.audio.playGatherCue('curio');
+    }
+    if (res.message) {
+      this.showStatusMessage(res.message);
+    }
+    return res;
+  }
+
+  private getStaticCirclesForPlacement(px: number, pz: number): CircleCollider[] {
+    if (this.activeInterior) {
+      return this.activeInterior.circleColliders;
+    }
+    this.overworldColliderGrid.query(
+      px + Math.sin(this.playerYaw) * 2.5,
+      pz + Math.cos(this.playerYaw) * 2.5,
+      this.nearbyCirclesBuf,
+      this.nearbyBoxesBuf
+    );
+    return this.nearbyCirclesBuf;
+  }
+
+  private updateGhostPlacement(): void {
+    const envId = this.getActiveEnvironmentId();
+    const portals = this.activeInterior ? this.activeInterior.portals : this.world.portals;
+    const staticCircles = this.getStaticCirclesForPlacement(
+      this.playerPos.x,
+      this.playerPos.z
+    );
+    const staticBoxes = this.activeInterior
+      ? this.activeInterior.boxColliders
+      : this.nearbyBoxesBuf;
+
+    this.buildingSystem.updateGhost(
+      this.playerPos.x,
+      this.playerPos.y,
+      this.playerPos.z,
+      this.playerYaw,
+      (x, z, refY) => this.getActiveWalkableHeight(x, z, refY, 0, true),
+      envId,
+      staticCircles,
+      staticBoxes,
+      portals,
+      this.getActiveSaveState()
+    );
   }
 
   public orbitBy(deltaYaw: number, deltaPitch: number): void {
@@ -912,9 +1453,105 @@ export class ForestExplorerEngine {
     return DEV_TELEPORT_POINTS;
   }
 
+  private onInteriorLocationTrigger = (triggerId: string): void => {
+    const msg = this.explorationSystem.notifyLocationTrigger(triggerId, this.updateSaveState);
+    if (msg) {
+      this.showStatusMessage(msg);
+    }
+  };
+
+  public getAtmosphereState(): ExplorationAtmosphereState {
+    return this.explorationSystem.getAtmosphereState();
+  }
+
+  public getDevExplorationSnapshot(): DevExplorationSnapshot | null {
+    if (!this.devModeEnabled) return null;
+    return this.explorationSystem.getDevSnapshot(this.getActiveSaveState());
+  }
+
+  public setDevTimePreset(hour: number | null): void {
+    if (!this.devModeEnabled) return;
+    this.explorationSystem.setDevTimeOfDay(hour);
+    const atm = this.explorationSystem.getAtmosphereState();
+    this.callbacks.onAtmosphereChange?.(atm);
+    if (!this.activeInterior) {
+      this.applyExteriorEnvironment();
+    }
+    this.showStatusMessage(
+      hour === null ? 'Time override cleared — live cycle active' : `Dev Time pinned to ${atm.hourLabel} (${atm.phase})`
+    );
+  }
+
+  public toggleDevTimeCyclePaused(): boolean {
+    if (!this.devModeEnabled) return false;
+    const next = !this.explorationSystem.getAtmosphereState().cyclePaused;
+    this.explorationSystem.setDevCyclePaused(next);
+    const atm = this.explorationSystem.getAtmosphereState();
+    this.callbacks.onAtmosphereChange?.(atm);
+    this.showStatusMessage(next ? 'Day/Night cycle paused' : 'Day/Night cycle resumed');
+    return next;
+  }
+
+  public triggerDevDynamicEvent(kind?: DynamicEventKind): DynamicEventUiSummary | null {
+    if (!this.devModeEnabled) return null;
+    if (this.activeInterior) {
+      this.showStatusMessage('Go outdoors to spawn a dynamic world event');
+      return null;
+    }
+    const ev = this.explorationSystem.triggerDevDynamicEvent(
+      this.playerPos.x,
+      this.playerPos.z,
+      this.world.colliders,
+      this.world.boxColliders,
+      kind
+    );
+    if (!ev) {
+      this.showStatusMessage('No clear ground nearby to spawn event — step toward a trail or glade');
+      return null;
+    }
+    this.callbacks.onAtmosphereChange?.(this.explorationSystem.getAtmosphereState());
+    this.showStatusMessage(`Spawned Event: ${ev.title} (${ev.x}, ${ev.z})`);
+    return ev;
+  }
+
+  public clearDevDynamicEvents(): void {
+    if (!this.devModeEnabled) return;
+    this.explorationSystem.clearAllDynamicEvents();
+    this.callbacks.onAtmosphereChange?.(this.explorationSystem.getAtmosphereState());
+    this.updateInteractionPrompt();
+    this.showStatusMessage('Cleared active dynamic events');
+  }
+
+  public setDevMechanismsOpen(open: boolean): void {
+    if (!this.devModeEnabled) return;
+    this.explorationSystem.setAllMechanismsState(open, this.updateSaveState);
+    this.updateInteractionPrompt();
+    this.showStatusMessage(open ? 'All secret mechanisms opened (Dev Sandbox)' : 'All secret mechanisms reset (Dev Sandbox)');
+  }
+
+  public revealDevSecretsAndJournal(): void {
+    if (!this.devModeEnabled) return;
+    this.explorationSystem.revealAllSecretsAndJournal(this.updateSaveState);
+    this.showStatusMessage('All Journal lore & crafting schematics unlocked in Dev Sandbox');
+  }
+
+  public spawnDevTestChest(): void {
+    if (!this.devModeEnabled) return;
+    this.explorationSystem.spawnDevTestChestNear(
+      this.playerPos.x,
+      this.playerPos.y,
+      this.playerPos.z,
+      this.playerYaw
+    );
+    this.updateInteractionPrompt();
+    this.showStatusMessage('Spawned Dev Sandbox Cache ahead of wanderer');
+  }
+
   public setDevMode(enabled: boolean): void {
     if (enabled === this.devModeEnabled) return;
     this.closeDialogue();
+    this.cancelStructurePlacement();
+    this.callbacks.onStashModalChange?.(false);
 
     if (enabled) {
       // Snapshot complete normal state before entering sandboxed Dev Mode
@@ -934,8 +1571,13 @@ export class ForestExplorerEngine {
       this.devModeEnabled = true;
       this.ecosystem.syncSaveState(this.devSaveState);
       this.resourceManager.syncFromSave(this.devSaveState);
+      this.equipmentSystem.syncFromSave(this.devSaveState);
+      this.buildingSystem.syncForEnvironment(this.getActiveEnvironmentId(), this.devSaveState);
+      this.explorationSystem.syncForEnvironment(this.getActiveEnvironmentId(), this.devSaveState);
       this.callbacks.onSaveStateChange?.(this.devSaveState);
       this.callbacks.onDevModeChange?.(true);
+      this.callbacks.onAtmosphereChange?.(this.explorationSystem.getAtmosphereState());
+      this.emitSurvival();
       this.showStatusMessage('Developer Mode enabled (normal progression isolated)');
       return;
     }
@@ -948,6 +1590,7 @@ export class ForestExplorerEngine {
 
     if (snap) {
       this.saveState = cloneSaveState(snap.saveState);
+      this.explorationSystem.resetTransientForDevExit(this.saveState);
       this.ecosystem.syncSaveState(this.saveState);
       this.resourceManager.syncFromSave(this.saveState);
 
@@ -965,7 +1608,8 @@ export class ForestExplorerEngine {
           this.textures,
           this.saveState,
           this.updateSaveState,
-          () => this.getActiveSaveState()
+          () => this.getActiveSaveState(),
+          this.onInteriorLocationTrigger
         );
         this.activeInterior = built;
         this.worldRoot.visible = false;
@@ -976,6 +1620,17 @@ export class ForestExplorerEngine {
         this.worldRoot.visible = true;
         this.applyExteriorEnvironment();
       }
+
+      this.equipmentSystem.syncFromSave(this.saveState);
+      this.buildingSystem.syncForEnvironment(
+        snap.activeInteriorId ?? 'overworld',
+        this.saveState
+      );
+      this.explorationSystem.syncForEnvironment(
+        snap.activeInteriorId ?? 'overworld',
+        this.saveState
+      );
+      this.survivalSystem.reset();
 
       this.exteriorReturn = snap.exteriorReturn ? { ...snap.exteriorReturn } : null;
       this.playerPos.set(snap.playerPos.x, snap.playerPos.y, snap.playerPos.z);
@@ -1001,7 +1656,10 @@ export class ForestExplorerEngine {
       this.currentZoneName = snap.zoneName;
       this.callbacks.onZoneChange?.(snap.zoneName);
       this.callbacks.onSaveStateChange?.(this.saveState);
+      this.callbacks.onAtmosphereChange?.(this.explorationSystem.getAtmosphereState());
       this.emitVitals();
+      this.emitSurvival();
+      this.emitPlacementIfChanged(true);
       this.updateInteractionPrompt();
 
       if (!this.isSoftwareGl) {
@@ -1055,6 +1713,8 @@ export class ForestExplorerEngine {
     overrideExteriorReturn?: { x: number; y: number; z: number; yaw: number } | null
   ): void {
     this.closeDialogue();
+    this.cancelStructurePlacement();
+    this.callbacks.onStashModalChange?.(false);
     this.transitionPhase = 'idle';
     this.pendingPortal = null;
     this.callbacks.onTransitionChange?.(false);
@@ -1098,7 +1758,8 @@ export class ForestExplorerEngine {
           this.textures,
           activeState,
           this.updateSaveState,
-          () => this.getActiveSaveState()
+          () => this.getActiveSaveState(),
+          this.onInteriorLocationTrigger
         );
         this.activeInterior = built;
         this.worldRoot.visible = false;
@@ -1113,6 +1774,16 @@ export class ForestExplorerEngine {
       this.currentZoneName = this.activeInterior.name;
       this.callbacks.onZoneChange?.(this.activeInterior.name);
     }
+
+    this.buildingSystem.syncForEnvironment(
+      this.getActiveEnvironmentId(),
+      this.getActiveSaveState()
+    );
+    this.explorationSystem.syncForEnvironment(
+      this.getActiveEnvironmentId(),
+      this.getActiveSaveState()
+    );
+    this.callbacks.onAtmosphereChange?.(this.explorationSystem.getAtmosphereState());
 
     this.playerVel.set(0, 0, 0);
     this.playerYaw = yaw;
@@ -1147,15 +1818,24 @@ export class ForestExplorerEngine {
       this.showStatusMessage('Disable Developer Mode before resetting ledger');
       return;
     }
+    this.cancelStructurePlacement();
+    this.callbacks.onStashModalChange?.(false);
     this.saveState = clearWorldSave(WORLD_SEED);
+    this.explorationSystem.resetTransientForDevExit(this.saveState);
     this.ecosystem.syncSaveState(this.saveState);
     this.resourceManager.syncFromSave(this.saveState);
+    this.equipmentSystem.syncFromSave(this.saveState);
+    this.buildingSystem.syncForEnvironment(this.getActiveEnvironmentId(), this.saveState);
+    this.explorationSystem.syncForEnvironment(this.getActiveEnvironmentId(), this.saveState);
+    this.survivalSystem.reset();
     this.ecosystem.initOverworld(
       WORLD_SEED,
       this.world.colliders,
       this.world.boxColliders
     );
     this.callbacks.onSaveStateChange?.(this.saveState);
+    this.callbacks.onAtmosphereChange?.(this.explorationSystem.getAtmosphereState());
+    this.emitSurvival();
     this.showStatusMessage('Exploration ledger cleared');
   }
 
@@ -1186,6 +1866,7 @@ export class ForestExplorerEngine {
       ...prev,
       discoveredIds: nextIds,
     }));
+    this.questSystem.syncDiscoveries(nextIds.length, this.updateSaveState);
     this.callbacks.onDiscovery?.(
       displayName ?? entry.name,
       nextIds.length,
@@ -1202,6 +1883,9 @@ export class ForestExplorerEngine {
 
   private executePortalTransition(portal: PortalLink): void {
     this.closeDialogue();
+    this.cancelStructurePlacement();
+    this.callbacks.onStashModalChange?.(false);
+
     if (portal.targetId === 'overworld') {
       // Unload interior and restore exterior forest world cleanly
       if (this.activeInterior) {
@@ -1225,6 +1909,8 @@ export class ForestExplorerEngine {
         this.playerYaw = Math.PI;
       }
       this.exteriorReturn = null;
+      this.buildingSystem.syncForEnvironment('overworld', this.getActiveSaveState());
+      this.explorationSystem.syncForEnvironment('overworld', this.getActiveSaveState());
     } else {
       // Save player exterior threshold position & outward-facing yaw before entering
       this.exteriorReturn = {
@@ -1245,13 +1931,16 @@ export class ForestExplorerEngine {
         this.textures,
         this.getActiveSaveState(),
         this.updateSaveState,
-        () => this.getActiveSaveState()
+        () => this.getActiveSaveState(),
+        this.onInteriorLocationTrigger
       );
       this.activeInterior = built;
       this.worldRoot.visible = false;
       this.scene.add(built.group);
       this.ecosystem.loadInterior(portal.targetId);
       this.applyInteriorEnvironment(built);
+      this.buildingSystem.syncForEnvironment(portal.targetId, this.getActiveSaveState());
+      this.explorationSystem.syncForEnvironment(portal.targetId, this.getActiveSaveState());
 
       this.playerPos.set(portal.spawnX, portal.spawnY, portal.spawnZ);
       this.playerYaw = portal.spawnYaw;
@@ -1297,22 +1986,25 @@ export class ForestExplorerEngine {
   }
 
   private applyExteriorEnvironment(): void {
-    this.scene.background = EXTERIOR_BG.clone();
-    this.scene.fog = new THREE.FogExp2(EXTERIOR_FOG_COLOR, EXTERIOR_FOG_DENSITY);
-    this.scene.environmentIntensity = 0.72;
+    const atm = this.explorationSystem.getAtmosphereState();
+    evaluateExteriorAtmosphereProfile(atm, _extAtmProfile);
 
-    this.ambientLight.color.set('#8f9ca6');
-    this.ambientLight.intensity = 0.55;
-    this.hemiLight.color.set('#bfd0de');
-    this.hemiLight.groundColor.set('#435045');
-    this.hemiLight.intensity = 1.65;
-    this.keyLight.color.set('#dce4eb');
-    this.keyLight.intensity = 1.75;
-    this.rimLight.intensity = 0.72;
+    this.scene.background = _extAtmProfile.skyColor.clone();
+    this.scene.fog = new THREE.FogExp2(_extAtmProfile.fogColor.getHex(), _extAtmProfile.fogDensity);
+    this.scene.environmentIntensity = 0.72 * (1 - atm.nocturnalIntensity * 0.35);
 
-    this.renderer.toneMappingExposure = 1.25;
-    this.retroPass.updateConfig({ exposure: 1.25 });
-    this.playerRig.lanternLight.distance = 9;
+    this.ambientLight.color.copy(_extAtmProfile.ambientColor);
+    this.ambientLight.intensity = _extAtmProfile.ambientIntensity;
+    this.hemiLight.color.copy(_extAtmProfile.hemiSky);
+    this.hemiLight.groundColor.copy(_extAtmProfile.hemiGround);
+    this.hemiLight.intensity = _extAtmProfile.hemiIntensity;
+    this.keyLight.color.copy(_extAtmProfile.keyColor);
+    this.keyLight.intensity = _extAtmProfile.keyIntensity;
+    this.rimLight.intensity = _extAtmProfile.rimIntensity;
+
+    this.renderer.toneMappingExposure = _extAtmProfile.exposure;
+    this.retroPass.updateConfig({ exposure: _extAtmProfile.exposure });
+    this.playerRig.lanternLight.distance = _extAtmProfile.lanternDistance;
     this.audio.setEnvironmentMode('forest');
   }
 
@@ -1527,7 +2219,7 @@ export class ForestExplorerEngine {
 
     const keyboardRun = !!(this.keys['ShiftLeft'] || this.keys['ShiftRight']);
     const touchRun = this.touchSprint || this.touchMove.magnitude > 0.72;
-    const isRunning = hasMove && (keyboardRun || touchRun);
+    const isRunning = hasMove && this.survivalSystem.canSprint() && (keyboardRun || touchRun);
 
     const maxSpeed = isRunning ? (this.activeInterior ? 5.2 : 6.4) : 3.45;
     const moveScale = hasMove ? Math.min(1, inputLen) : 0;
@@ -1635,11 +2327,29 @@ export class ForestExplorerEngine {
     const playerRadius = 0.42;
     const pFootY = this.playerPos.y;
     const pHeadY = this.playerPos.y + 1.55;
+    const dynStructureCircles = this.buildingSystem.getActiveColliders();
+    const expDynBoxes = this.explorationSystem.getDynamicBoxColliders();
     let colliders: CircleCollider[];
     let boxColliders: BoxCollider[];
+    this.playerBoxCollidersBuf.length = 0;
     if (this.activeInterior) {
-      colliders = this.activeInterior.circleColliders;
-      boxColliders = this.activeInterior.boxColliders;
+      this.playerDynCirclesBuf.length = 0;
+      const baseInt = this.activeInterior.circleColliders;
+      for (let i = 0; i < baseInt.length; i++) {
+        this.playerDynCirclesBuf.push(baseInt[i]);
+      }
+      for (let i = 0; i < dynStructureCircles.length; i++) {
+        this.playerDynCirclesBuf.push(dynStructureCircles[i]);
+      }
+      colliders = this.playerDynCirclesBuf;
+      const baseIntBoxes = this.activeInterior.boxColliders;
+      for (let i = 0; i < baseIntBoxes.length; i++) {
+        this.playerBoxCollidersBuf.push(baseIntBoxes[i]);
+      }
+      for (let i = 0; i < expDynBoxes.length; i++) {
+        this.playerBoxCollidersBuf.push(expDynBoxes[i]);
+      }
+      boxColliders = this.playerBoxCollidersBuf;
     } else {
       this.overworldColliderGrid.query(
         nextX,
@@ -1647,8 +2357,17 @@ export class ForestExplorerEngine {
         this.nearbyCirclesBuf,
         this.nearbyBoxesBuf
       );
+      for (let i = 0; i < dynStructureCircles.length; i++) {
+        this.nearbyCirclesBuf.push(dynStructureCircles[i]);
+      }
       colliders = this.nearbyCirclesBuf;
-      boxColliders = this.nearbyBoxesBuf;
+      for (let i = 0; i < this.nearbyBoxesBuf.length; i++) {
+        this.playerBoxCollidersBuf.push(this.nearbyBoxesBuf[i]);
+      }
+      for (let i = 0; i < expDynBoxes.length; i++) {
+        this.playerBoxCollidersBuf.push(expDynBoxes[i]);
+      }
+      boxColliders = this.playerBoxCollidersBuf;
     }
 
     for (let pass = 0; pass < 2; pass++) {
@@ -1780,14 +2499,54 @@ export class ForestExplorerEngine {
     // 8. Update Camera Transform (with interior wall-occlusion pull-in)
     this.updateCameraTransform(dt);
 
-    // 9. Texel-snapped shadow frustum + Subtle Canopy Shade outdoors
+    // 8b. Update Exploration System (24h Cycle, Secret Mechanisms, Treasures, Dynamic World Events)
+    const activeStatePre = this.getActiveSaveState();
+    const atmChanged = this.explorationSystem.update(dt, elapsed, {
+      playerX: this.playerPos.x,
+      playerY: this.playerPos.y,
+      playerZ: this.playerPos.z,
+      isInterior: !!this.activeInterior,
+      devModeEnabled: this.devModeEnabled,
+      overworldStaticCircles: this.world.colliders,
+      overworldStaticBoxes: this.world.boxColliders,
+      saveState: activeStatePre,
+      updateSaveState: this.updateSaveState,
+    });
+    if (atmChanged) {
+      this.callbacks.onAtmosphereChange?.(atmChanged);
+    }
+    const currentAtm = this.explorationSystem.getAtmosphereState();
+    this.ecosystem.setNocturnalIntensity(currentAtm.nocturnalIntensity);
+
+    // 9. Texel-snapped shadow frustum + Day/Night Exterior Atmosphere & Canopy Shade
     if (!this.activeInterior) {
+      evaluateExteriorAtmosphereProfile(currentAtm, _extAtmProfile);
+      if (this.scene.background instanceof THREE.Color) {
+        this.scene.background.copy(_extAtmProfile.skyColor);
+      }
+      if (this.scene.fog instanceof THREE.FogExp2) {
+        this.scene.fog.color.copy(_extAtmProfile.fogColor);
+        this.scene.fog.density = _extAtmProfile.fogDensity;
+      }
+      this.scene.environmentIntensity = 0.72 * (1 - currentAtm.nocturnalIntensity * 0.35);
+
       const canopyShade =
         groveDensityAt(this.playerPos.x, this.playerPos.z) *
         (1 - pathMaskAt(this.playerPos.x, this.playerPos.z));
       const canopyFactor = 1 - canopyShade * 0.14;
-      this.keyLight.intensity = 1.75 * canopyFactor;
-      this.hemiLight.intensity = 1.65 * (0.92 + 0.08 * canopyFactor);
+
+      this.ambientLight.color.copy(_extAtmProfile.ambientColor);
+      this.ambientLight.intensity = _extAtmProfile.ambientIntensity;
+      this.hemiLight.color.copy(_extAtmProfile.hemiSky);
+      this.hemiLight.groundColor.copy(_extAtmProfile.hemiGround);
+      this.hemiLight.intensity = _extAtmProfile.hemiIntensity * (0.92 + 0.08 * canopyFactor);
+      this.keyLight.color.copy(_extAtmProfile.keyColor);
+      this.keyLight.intensity = _extAtmProfile.keyIntensity * canopyFactor;
+      this.rimLight.intensity = _extAtmProfile.rimIntensity;
+
+      this.renderer.toneMappingExposure = _extAtmProfile.exposure;
+      this.retroPass.updateConfig({ exposure: _extAtmProfile.exposure });
+      this.playerRig.lanternLight.distance = _extAtmProfile.lanternDistance;
 
       if (this.keyLight.castShadow) {
         const snapX = Math.round(this.playerPos.x);
@@ -1800,6 +2559,17 @@ export class ForestExplorerEngine {
     }
 
     // 10. Update Living Ecosystem (Animals, Creatures, Monsters & NPCs)
+    const ecoBaseCircles = this.activeInterior
+      ? this.activeInterior.circleColliders
+      : this.world.colliders;
+    this.ecosystemCirclesBuf.length = 0;
+    for (let i = 0; i < ecoBaseCircles.length; i++) {
+      this.ecosystemCirclesBuf.push(ecoBaseCircles[i]);
+    }
+    for (let i = 0; i < dynStructureCircles.length; i++) {
+      this.ecosystemCirclesBuf.push(dynStructureCircles[i]);
+    }
+
     this.ecosystem.update({
       dt,
       elapsed,
@@ -1810,9 +2580,7 @@ export class ForestExplorerEngine {
       playerSpeed: horizSpeed,
       lanternOn: this.lanternEnabled,
       isInterior: !!this.activeInterior,
-      colliders: this.activeInterior
-        ? this.activeInterior.circleColliders
-        : this.world.colliders,
+      colliders: this.ecosystemCirclesBuf,
       boxColliders: this.activeInterior
         ? this.activeInterior.boxColliders
         : this.world.boxColliders,
@@ -1821,7 +2589,9 @@ export class ForestExplorerEngine {
       talkingNpcId: this.activeDialogue ? this.activeDialogue.npcId : null,
       onPlayerDamaged: (amount, knockX, knockZ) => {
         if (this.transitionPhase !== 'idle') return;
-        this.playerHp = Math.max(0, this.playerHp - amount);
+        const stats = this.equipmentSystem.getCombatStats(this.getActiveSaveState());
+        const mitigated = Math.max(1, Math.round(amount * (1 - stats.defenseReduction)));
+        this.playerHp = Math.max(0, this.playerHp - mitigated);
         this.hurtFlashTimer = 0.35;
         this.combatCooldownTimer = 5.0;
         this.playerVel.x += knockX;
@@ -1835,7 +2605,40 @@ export class ForestExplorerEngine {
       },
     });
 
-    // 11. Dynamic 6-Light Pooling for active exterior/interior torches + glowing wisps/spirits
+    // 10b. Ghost Building Preview & Survival Vitals (Stamina / Warmth / Stations)
+    if (this.buildingSystem.isPlacementActive()) {
+      this.updateGhostPlacement();
+      this.emitPlacementIfChanged();
+    }
+
+    const activeState = this.getActiveSaveState();
+    const warmthEnv = this.buildingSystem.getWarmthEnvironment(
+      this.playerPos.x,
+      this.playerPos.y,
+      this.playerPos.z
+    );
+    const nearbyStations = this.buildingSystem.getNearbyStations(
+      this.playerPos.x,
+      this.playerPos.y,
+      this.playerPos.z
+    );
+    const armorWarmth = this.equipmentSystem.getCombatStats(activeState).warmthBonus;
+    if (
+      this.survivalSystem.update(
+        dt,
+        isRunning,
+        horizSpeed > 0.25,
+        !!this.activeInterior,
+        warmthEnv.nearFire,
+        warmthEnv.inShelter,
+        armorWarmth,
+        nearbyStations
+      )
+    ) {
+      this.emitSurvival();
+    }
+
+    // 11. Dynamic 6-Light Pooling for active exterior/interior torches + glowing wisps/spirits + placed structures
     this.updateNearestWorldLights(elapsed);
 
     // 12. World Zone Culling, Resources, Embers, Mist & Shader Time
@@ -1847,7 +2650,7 @@ export class ForestExplorerEngine {
         dt,
         this.playerPos.x,
         this.playerPos.z,
-        this.getActiveSaveState()
+        activeState
       );
     }
 
@@ -1872,10 +2675,28 @@ export class ForestExplorerEngine {
       );
     }
 
+    const builtEmbers = this.buildingSystem.getActiveEmbers();
+    for (let i = 0; i < builtEmbers.length; i++) {
+      const em = builtEmbers[i];
+      const flicker =
+        0.9 +
+        0.1 * Math.sin(elapsed * 7.6 + em.phase) +
+        0.06 * Math.cos(elapsed * 14.3 + em.phase * 1.5);
+      const bs = em.baseScale;
+      const sx = bs ? bs[0] : 1.0;
+      const sy = bs ? bs[1] : 1.0;
+      const sz = bs ? bs[2] : 1.0;
+      em.ember.scale.set(
+        sx * (0.94 + flicker * 0.08),
+        sy * (0.88 + flicker * 0.18),
+        sz * (0.94 + flicker * 0.08)
+      );
+    }
+
     if (this.lanternEnabled) {
       const baseInt = this.activeInterior
         ? this.activeInterior.lighting.lanternIntensity
-        : 1.45;
+        : 1.45 * _extAtmProfile.lanternBoost;
       const lanternFlicker =
         0.92 + 0.08 * Math.sin(elapsed * 8.4) + 0.05 * Math.cos(elapsed * 14.1);
       this.playerRig.lanternLight.intensity = baseInt * lanternFlicker;
@@ -1892,7 +2713,10 @@ export class ForestExplorerEngine {
 
   private handlePlayerFallen(): void {
     this.closeDialogue();
+    this.cancelStructurePlacement();
+    this.callbacks.onStashModalChange?.(false);
     this.playerHp = this.maxPlayerHp;
+    this.survivalSystem.applyRestRestore();
     this.hurtFlashTimer = 0;
     this.combatCooldownTimer = 0;
     this.playerVel.set(0, 0, 0);
@@ -1905,6 +2729,8 @@ export class ForestExplorerEngine {
       this.worldRoot.visible = true;
       this.applyExteriorEnvironment();
       this.exteriorReturn = null;
+      this.buildingSystem.syncForEnvironment('overworld', this.getActiveSaveState());
+      this.explorationSystem.syncForEnvironment('overworld', this.getActiveSaveState());
     }
 
     this.playerPos.set(0, walkableHeightAt(0, 5.2), 5.2);
@@ -1916,6 +2742,7 @@ export class ForestExplorerEngine {
     this.smoothLookAt.set(this.playerPos.x, this.playerPos.y + 1.44, this.playerPos.z);
     this.updateCameraTransform(1.0);
     this.emitVitals();
+    this.emitSurvival();
     this.showStatusMessage('Overwhelmed in the dark — awakened at The Moss Clearing');
   }
 
@@ -1924,6 +2751,10 @@ export class ForestExplorerEngine {
       ? this.activeInterior.lightAnchors
       : this.world.lightAnchors;
     const entityAnchors = this.ecosystem.getDynamicLightAnchors(!!this.activeInterior);
+    const builtAnchors = this.buildingSystem.getActiveLightAnchors();
+    const explorationAnchors = this.explorationSystem.getActiveLightAnchors(
+      !!this.activeInterior
+    );
 
     this.combinedLightAnchors.length = 0;
     for (let i = 0; i < baseAnchors.length; i++) {
@@ -1931,6 +2762,12 @@ export class ForestExplorerEngine {
     }
     for (let i = 0; i < entityAnchors.length; i++) {
       this.combinedLightAnchors.push(entityAnchors[i]);
+    }
+    for (let i = 0; i < builtAnchors.length; i++) {
+      this.combinedLightAnchors.push(builtAnchors[i]);
+    }
+    for (let i = 0; i < explorationAnchors.length; i++) {
+      this.combinedLightAnchors.push(explorationAnchors[i]);
     }
 
     this.lightPoolSortBuf.length = 0;
@@ -2142,11 +2979,10 @@ export class ForestExplorerEngine {
       dt
     );
 
-    // Drawn Sword Slash or Gathering Reach Animation
+    // Drawn Sword / Equipped Gear Swing or Gathering Reach Animation
     if (this.attackAnimTimer > 0) {
       const p = 1 - this.attackAnimTimer / 0.34;
-      rig.drawnSwordGroup.visible = true;
-      rig.sheathedSwordGroup.visible = false;
+      this.equipmentSystem.syncRigCombatPose(true, false);
       const swingAngle = THREE.MathUtils.lerp(-1.95, 0.78, Math.min(1, p * 1.35));
       rig.rightArmPivot.rotation.x = swingAngle;
       rig.rightArmPivot.rotation.z = -0.35 + Math.sin(p * Math.PI) * 0.45;
@@ -2154,14 +2990,12 @@ export class ForestExplorerEngine {
       rig.torso.rotation.y = Math.sin(p * Math.PI) * -0.32;
     } else if (this.gatherAnimTimer > 0) {
       const p = Math.sin((1 - this.gatherAnimTimer / 0.24) * Math.PI);
-      rig.drawnSwordGroup.visible = false;
-      rig.sheathedSwordGroup.visible = true;
+      this.equipmentSystem.syncRigCombatPose(false, true);
       rig.rightArmPivot.rotation.x = -0.95 * p;
       rig.rightForearmPivot.rotation.x = -0.55 * p;
       rig.torso.rotation.x = THREE.MathUtils.lerp(rig.torso.rotation.x, 0.26 * p, 0.65);
     } else {
-      rig.drawnSwordGroup.visible = false;
-      rig.sheathedSwordGroup.visible = true;
+      this.equipmentSystem.syncRigCombatPose(false, false);
       rig.rightArmPivot.rotation.z = THREE.MathUtils.damp(rig.rightArmPivot.rotation.z, 0, 10, dt);
       rig.torso.rotation.y = THREE.MathUtils.damp(rig.torso.rotation.y, 0, 10, dt);
     }
@@ -2306,6 +3140,49 @@ export class ForestExplorerEngine {
     }
 
     if (!this.activeDialogue) {
+      const nearStructure = this.buildingSystem.findNearestInteractableStructure(
+        this.playerPos.x,
+        this.playerPos.y,
+        this.playerPos.z
+      );
+      if (nearStructure) {
+        const dSq = nearStructure.distance * nearStructure.distance;
+        if (dSq < bestDistSq) {
+          bestDistSq = dSq;
+          bestAction = {
+            kind: 'structure',
+            structureInfo: nearStructure,
+            prompt: {
+              id: nearStructure.record.id,
+              label: `${nearStructure.def.interactionVerb} (${nearStructure.def.name})`,
+              kind: 'structure',
+            },
+          };
+        }
+      }
+
+      const expHit = this.explorationSystem.findNearestInteractable(
+        this.getActiveEnvironmentId(),
+        this.playerPos.x,
+        this.playerPos.y,
+        this.playerPos.z,
+        () => this.getActiveSaveState(),
+        this.updateSaveState
+      );
+      if (expHit && expHit.distSq < bestDistSq) {
+        bestDistSq = expHit.distSq;
+        bestAction = {
+          kind: 'exploration',
+          expKind: expHit.kind,
+          run: expHit.activate,
+          prompt: {
+            id: expHit.id,
+            label: expHit.label,
+            kind: expHit.kind,
+          },
+        };
+      }
+
       const npcHit = this.ecosystem.findNearestInteractableNpc(
         !!this.activeInterior,
         this.playerPos.x,
@@ -2336,6 +3213,9 @@ export class ForestExplorerEngine {
     cancelAnimationFrame(this.frameId);
     clearTimeout(this.timeoutId);
     this.unbindEvents();
+    this.explorationSystem.dispose();
+    this.buildingSystem.dispose();
+    this.equipmentSystem.dispose();
     this.resourceManager.dispose();
     this.ecosystem.dispose();
     this.audio.dispose();

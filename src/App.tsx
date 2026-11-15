@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { GameHud } from './components/GameHud';
+import { GameplayHud, WorkshopTab } from './components/GameplayHud';
 import { TouchControls } from './components/TouchControls';
 import { DEV_TELEPORT_POINTS } from './game/devLocations';
 import { ForestExplorerEngine } from './game/engine';
@@ -12,6 +13,17 @@ import {
   ThornvaleSaveState,
   TouchMoveInput,
 } from './game/types';
+import { computeDayNightAtmosphere } from './systems/ExplorationSystem';
+import {
+  DynamicEventKind,
+  ExplorationAtmosphereState,
+} from './types/exploration';
+import {
+  BuildableStructureId,
+  GearSlot,
+  PlacementPreviewState,
+  PlayerSurvivalState,
+} from './types/gameplay';
 
 function isTouchDevice(): boolean {
   if (typeof window === 'undefined') return false;
@@ -48,6 +60,31 @@ export default function App() {
     inCombat: false,
     hurtFlash: 0,
   });
+  const [survival, setSurvival] = useState<PlayerSurvivalState>({
+    stamina: 100,
+    maxStamina: 100,
+    warmth: 74,
+    maxWarmth: 100,
+    nearFire: false,
+    inShelter: false,
+    nearbyStations: ['hand'],
+  });
+  const [placement, setPlacement] = useState<PlacementPreviewState>({
+    active: false,
+    structureId: null,
+    structureName: '',
+    valid: false,
+    reason: '',
+    rotY: 0,
+  });
+  const [inventoryOpen, setInventoryOpen] = useState(false);
+  const [workshopOpen, setWorkshopOpen] = useState(false);
+  const [workshopTab, setWorkshopTab] = useState<WorkshopTab>('craft');
+  const [stashOpen, setStashOpen] = useState(false);
+
+  const [atmosphere, setAtmosphere] = useState<ExplorationAtmosphereState>(() =>
+    computeDayNightAtmosphere(13.25)
+  );
   const [transitionFading, setTransitionFading] = useState(false);
   const [bannerMessage, setBannerMessage] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<ThornvaleSaveState>(() =>
@@ -65,6 +102,10 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    engineRef.current?.setInputPaused(inventoryOpen || workshopOpen || stashOpen);
+  }, [inventoryOpen, workshopOpen, stashOpen]);
+
+  useEffect(() => {
     const mountEl = canvasMountRef.current;
     if (!mountEl) return;
 
@@ -79,6 +120,17 @@ export default function App() {
         onInteractPromptChange: (prompt) => setInteractPrompt(prompt),
         onDialogueChange: (active) => setDialogue(active),
         onPlayerVitalsChange: (v) => setVitals(v),
+        onSurvivalChange: (s) => setSurvival(s),
+        onPlacementChange: (p) => setPlacement(p),
+        onStashModalChange: (open) => {
+          setStashOpen(open);
+          if (open) setWorkshopOpen(false);
+        },
+        onRequestOpenWorkshop: (tab = 'craft') => {
+          setWorkshopTab(tab);
+          setWorkshopOpen(true);
+          setStashOpen(false);
+        },
         onTransitionChange: (fading) => setTransitionFading(fading),
         onDiscovery: (placeName, count, total) => {
           showTransientBanner(`Discovered — ${placeName} (${count}/${total})`);
@@ -86,6 +138,7 @@ export default function App() {
         onStatusMessage: (msg) => showTransientBanner(msg),
         onSaveStateChange: (state) => setSaveState(state),
         onDevModeChange: (enabled) => setDevModeEnabled(enabled),
+        onAtmosphereChange: (atm) => setAtmosphere(atm),
       },
       initialQuality
     );
@@ -198,9 +251,123 @@ export default function App() {
     engineRef.current?.discardInventoryItem(slotIdx, amount);
   }, []);
 
-  const handleInventoryOpenChange = useCallback((open: boolean) => {
-    engineRef.current?.setInputPaused(open);
+  const handleEquipInventorySlot = useCallback((slotIdx: number) => {
+    engineRef.current?.equipInventorySlot(slotIdx);
   }, []);
+
+  const handleUseInventorySlot = useCallback((slotIdx: number) => {
+    engineRef.current?.useInventorySlot(slotIdx);
+  }, []);
+
+  const handleToggleWorkshop = useCallback(
+    (tab?: WorkshopTab) => {
+      setStashOpen(false);
+      if (tab) {
+        setWorkshopOpen((open) => {
+          if (open && workshopTab === tab) return false;
+          setWorkshopTab(tab);
+          return true;
+        });
+      } else {
+        setWorkshopOpen((open) => !open);
+      }
+    },
+    [workshopTab]
+  );
+
+  const handleCloseWorkshopAndStash = useCallback(() => {
+    setWorkshopOpen(false);
+    setStashOpen(false);
+  }, []);
+
+  const handleCraftRecipe = useCallback((recipeId: string) => {
+    engineRef.current?.craftRecipe(recipeId);
+  }, []);
+
+  const handleStartPlacement = useCallback((structureId: BuildableStructureId) => {
+    if (engineRef.current?.startStructurePlacement(structureId)) {
+      setWorkshopOpen(false);
+      setStashOpen(false);
+    }
+  }, []);
+
+  const handleConfirmPlacement = useCallback(() => {
+    engineRef.current?.confirmStructurePlacement();
+  }, []);
+
+  const handleRotatePlacement = useCallback(() => {
+    engineRef.current?.rotateStructurePlacement();
+  }, []);
+
+  const handleCancelPlacement = useCallback(() => {
+    engineRef.current?.cancelStructurePlacement();
+  }, []);
+
+  const handleDismantleStructure = useCallback((recordId: string) => {
+    engineRef.current?.dismantleStructure(recordId);
+  }, []);
+
+  const handleUnequipSlot = useCallback((slot: GearSlot) => {
+    engineRef.current?.unequipGearSlot(slot);
+  }, []);
+
+  const handleTransferPackToStash = useCallback((packIdx: number) => {
+    engineRef.current?.transferPackToStash(packIdx);
+  }, []);
+
+  const handleTransferStashToPack = useCallback((stashIdx: number) => {
+    engineRef.current?.transferStashToPack(stashIdx);
+  }, []);
+
+  const handleClaimQuest = useCallback((questId: string) => {
+    engineRef.current?.claimQuestReward(questId);
+  }, []);
+
+  const handleSetDevTime = useCallback((hour: number | null) => {
+    engineRef.current?.setDevTimePreset(hour);
+  }, []);
+
+  const handleToggleDevCycle = useCallback(() => {
+    engineRef.current?.toggleDevTimeCyclePaused();
+  }, []);
+
+  const handleTriggerDevEvent = useCallback((kind?: DynamicEventKind) => {
+    engineRef.current?.triggerDevDynamicEvent(kind);
+  }, []);
+
+  const handleClearDevEvents = useCallback(() => {
+    engineRef.current?.clearDevDynamicEvents();
+  }, []);
+
+  const handleSetDevMechanisms = useCallback((open: boolean) => {
+    engineRef.current?.setDevMechanismsOpen(open);
+  }, []);
+
+  const handleRevealDevJournal = useCallback(() => {
+    engineRef.current?.revealDevSecretsAndJournal();
+  }, []);
+
+  const handleSpawnDevChest = useCallback(() => {
+    engineRef.current?.spawnDevTestChest();
+  }, []);
+
+  const combatStats = engineRef.current
+    ? engineRef.current.getCombatStats()
+    : {
+        attackDamage: 22,
+        defenseReduction: 0,
+        warmthBonus: 0,
+        ownedTools: { axe: false, pickaxe: false },
+      };
+
+  const activeEnvironmentId = engineRef.current
+    ? engineRef.current.getActiveEnvironmentId()
+    : 'overworld';
+
+  const devExplorationSnapshot =
+    devModeEnabled && engineRef.current
+      ? engineRef.current.getDevExplorationSnapshot()
+      : null;
 
   return (
     <main className="relative h-screen w-screen overflow-hidden bg-[#182028]">
@@ -268,7 +435,53 @@ export default function App() {
         onMoveInventorySlot={handleMoveInventorySlot}
         onSplitInventorySlot={handleSplitInventorySlot}
         onDiscardInventoryItem={handleDiscardInventoryItem}
-        onInventoryOpenChange={handleInventoryOpenChange}
+        onEquipInventorySlot={handleEquipInventorySlot}
+        onUseInventorySlot={handleUseInventorySlot}
+        onInventoryOpenChange={setInventoryOpen}
+        survival={survival}
+        atmosphere={atmosphere}
+        devExplorationSnapshot={devExplorationSnapshot}
+        workshopOpen={workshopOpen}
+        stashOpen={stashOpen}
+        placementActive={placement.active}
+        onToggleWorkshop={handleToggleWorkshop}
+        onCloseWorkshopAndStash={handleCloseWorkshopAndStash}
+        onSetDevTime={handleSetDevTime}
+        onToggleDevCycle={handleToggleDevCycle}
+        onTriggerDevEvent={handleTriggerDevEvent}
+        onClearDevEvents={handleClearDevEvents}
+        onSetDevMechanisms={handleSetDevMechanisms}
+        onRevealDevJournal={handleRevealDevJournal}
+        onSpawnDevChest={handleSpawnDevChest}
+      />
+
+      <GameplayHud
+        saveState={saveState}
+        survival={survival}
+        placement={placement}
+        activeEnvironmentId={activeEnvironmentId}
+        combatStats={combatStats}
+        atmosphere={atmosphere}
+        devModeEnabled={devModeEnabled}
+        touchEnabled={touchEnabled}
+        workshopOpen={workshopOpen}
+        workshopTab={workshopTab}
+        stashOpen={stashOpen}
+        onChangeWorkshopTab={setWorkshopTab}
+        onCloseWorkshop={() => setWorkshopOpen(false)}
+        onCloseStash={() => setStashOpen(false)}
+        onCraftRecipe={handleCraftRecipe}
+        onStartPlacement={handleStartPlacement}
+        onConfirmPlacement={handleConfirmPlacement}
+        onRotatePlacement={handleRotatePlacement}
+        onCancelPlacement={handleCancelPlacement}
+        onDismantleStructure={handleDismantleStructure}
+        onEquipSlot={handleEquipInventorySlot}
+        onUnequipSlot={handleUnequipSlot}
+        onUseSlot={handleUseInventorySlot}
+        onTransferPackToStash={handleTransferPackToStash}
+        onTransferStashToPack={handleTransferStashToPack}
+        onClaimQuest={handleClaimQuest}
       />
     </main>
   );

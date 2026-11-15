@@ -244,6 +244,114 @@ export const ItemIcon: React.FC<ItemIconProps> = ({ icon, className = 'h-6 w-6' 
           <path d="M12 8.5v7M8.5 12h7" stroke="#d5e2eb" strokeWidth="1.4" />
         </svg>
       );
+    case 'axe':
+      return (
+        <svg viewBox="0 0 24 24" className={className} fill="none" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M5 19L16 8" stroke="#8a6845" strokeWidth="2.2" />
+          <path d="M13 5l6 2-2 6-5-3 1-5Z" fill="#7c8791" stroke="#c3ced6" strokeWidth="1.4" />
+        </svg>
+      );
+    case 'pickaxe':
+      return (
+        <svg viewBox="0 0 24 24" className={className} fill="none" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M5 19L16 8" stroke="#8a6845" strokeWidth="2.2" />
+          <path d="M9 5c3.5 0 7 2 10 6l-2.5 1.5C14.5 9.5 12 8 9 7.5V5Z" fill="#707b85" stroke="#bcc7d1" strokeWidth="1.4" />
+        </svg>
+      );
+    case 'spear':
+      return (
+        <svg viewBox="0 0 24 24" className={className} fill="none" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M4 20L15 9" stroke="#8a6845" strokeWidth="2" />
+          <path d="M14 6l6-2-2 6-4-4Z" fill="#8996a1" stroke="#d0dbe3" strokeWidth="1.4" />
+        </svg>
+      );
+    case 'sword':
+      return (
+        <svg viewBox="0 0 24 24" className={className} fill="none" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M6 18L18 6l1-2-2 1L5 17" fill="#9aa7b2" stroke="#dce5ed" strokeWidth="1.4" />
+          <path d="M6 14l4 4M4.5 19.5l2-2" stroke="#c49552" strokeWidth="2" />
+        </svg>
+      );
+    case 'shield':
+      return (
+        <svg viewBox="0 0 24 24" className={className} fill="none" strokeLinejoin="round">
+          <path d="M12 3l7 3v5c0 4.8-3 8.2-7 10-4-1.8-7-5.2-7-10V6l7-3Z" fill="#4f5a63" stroke="#b9c5cf" strokeWidth="1.5" />
+          <path d="M12 6v12" stroke="#c7954b" strokeWidth="1.4" />
+        </svg>
+      );
+    case 'armor':
+      return (
+        <svg viewBox="0 0 24 24" className={className} fill="none" strokeLinejoin="round">
+          <path d="M7 5l2.5-1.5h5L17 5l2 4-2.5 1.5V19h-9v-8.5L5 9l2-4Z" fill="#5e4b3c" stroke="#bfa488" strokeWidth="1.5" />
+          <path d="M12 6v13" stroke="#3d3025" strokeWidth="1.4" />
+        </svg>
+      );
+    case 'cloak':
+      return (
+        <svg viewBox="0 0 24 24" className={className} fill="none" strokeLinejoin="round">
+          <path d="M8 4h8l3 15-4-1.5L12 20l-3-2.5L5 19 8 4Z" fill="#4d5259" stroke="#a6b0ba" strokeWidth="1.5" />
+          <path d="M8 4c1.5 2 6.5 2 8 0" stroke="#c9b89c" strokeWidth="1.8" />
+        </svg>
+      );
+    case 'poultice':
+      return (
+        <svg viewBox="0 0 24 24" className={className} fill="none">
+          <rect x="6" y="6" width="12" height="12" rx="2.5" fill="#708f64" stroke="#b9d6a9" strokeWidth="1.5" />
+          <path d="M12 9v6M9 12h6" stroke="#ece6d6" strokeWidth="1.8" strokeLinecap="round" />
+        </svg>
+      );
+    case 'ration':
+      return (
+        <svg viewBox="0 0 24 24" className={className} fill="none">
+          <path d="M5 9l7-3 7 3v7l-7 3-7-3V9Z" fill="#7d5839" stroke="#c79b6b" strokeWidth="1.4" />
+          <path d="M5 12h14" stroke="#d4a65c" strokeWidth="1.3" />
+        </svg>
+      );
+    case 'broth':
+      return (
+        <svg viewBox="0 0 24 24" className={className} fill="none" strokeLinecap="round">
+          <path d="M5 11h14a6 6 0 0 1-14 0Z" fill="#5b666e" stroke="#aeb9c2" strokeWidth="1.5" />
+          <path d="M7 11h10" stroke="#c97d3b" strokeWidth="2.4" />
+          <path d="M9 7c0-1.5 1-2 1-3M14 7c0-1.5 1-2 1-3" stroke="#cbd5de" strokeWidth="1.3" />
+        </svg>
+      );
+    case 'ingot':
+      return (
+        <svg viewBox="0 0 24 24" className={className} fill="none" strokeLinejoin="round">
+          <path d="M6 10l4-4h8l-4 4H6Z" fill="#8f9aa3" stroke="#cdd7df" strokeWidth="1.3" />
+          <path d="M6 10h8v6H4l2-6Z" fill="#636d75" stroke="#a6b2bc" strokeWidth="1.3" />
+          <path d="M14 10l4-4v6l-4 4v-6Z" fill="#4b5359" stroke="#939fa8" strokeWidth="1.3" />
+        </svg>
+      );
+    case 'cordage':
+      return (
+        <svg viewBox="0 0 24 24" className={className} fill="none">
+          <ellipse cx="12" cy="12" rx="6.5" ry="4.5" stroke="#a89060" strokeWidth="2.2" />
+          <ellipse cx="12" cy="12" rx="3.5" ry="2" stroke="#7d6740" strokeWidth="1.6" />
+        </svg>
+      );
+    case 'key':
+      return (
+        <svg viewBox="0 0 24 24" className={className} fill="none" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="8" cy="12" r="4" fill="#463b29" stroke="#d8a852" strokeWidth="1.8" />
+          <path d="M12 12h8M17 12v3M20 12v2.5" stroke="#d8a852" strokeWidth="1.9" />
+        </svg>
+      );
+    case 'scroll':
+      return (
+        <svg viewBox="0 0 24 24" className={className} fill="none" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M7 5h10a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z" fill="#705a3c" stroke="#d9be8b" strokeWidth="1.4" />
+          <path d="M9 9h6M9 12.5h6M9 16h4" stroke="#efe0be" strokeWidth="1.3" />
+        </svg>
+      );
+    case 'map':
+      return (
+        <svg viewBox="0 0 24 24" className={className} fill="none" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M4 6l5-2 6 2 5-2v14l-5 2-6-2-5 2V6Z" fill="#5e4d36" stroke="#cfb482" strokeWidth="1.4" />
+          <path d="M9 4v14M15 6v14" stroke="#9e8254" strokeWidth="1.2" />
+          <path d="M11 10l3 3M14 10l-3 3" stroke="#e07a52" strokeWidth="1.4" />
+        </svg>
+      );
     case 'relic':
     default:
       return (

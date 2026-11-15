@@ -1,5 +1,9 @@
 import React, { useMemo, useState } from 'react';
-import { ArrowLeftRight, Package, Scissors, Trash2, X } from 'lucide-react';
+import { ArrowLeftRight, HeartPulse, Package, Scissors, Shield, Trash2, X } from 'lucide-react';
+import {
+  CONSUMABLE_EFFECTS_BY_ITEM_ID,
+  GEAR_STATS_BY_ITEM_ID,
+} from '../data/itemsGameplay';
 import {
   ACTIVE_INVENTORY_CATEGORIES,
   countUsedInventorySlots,
@@ -8,15 +12,19 @@ import {
   ITEM_CATEGORY_LABELS,
 } from '../game/inventory';
 import { InventorySlot, ItemCategory } from '../game/types';
+import { EquipmentLoadout } from '../types/gameplay';
 import { ItemIcon } from './ItemIcon';
 
 interface InventoryModalProps {
   slots: (InventorySlot | null)[];
+  equipment?: EquipmentLoadout;
   devModeEnabled: boolean;
   onClose: () => void;
   onMoveOrSwap: (fromIdx: number, toIdx: number) => void;
   onSplitStack: (slotIdx: number) => void;
   onDiscardItem: (slotIdx: number, amount?: number) => void;
+  onEquipItem?: (slotIdx: number) => void;
+  onUseItem?: (slotIdx: number) => void;
 }
 
 const RARITY_BADGE: Record<string, string> = {
@@ -28,11 +36,14 @@ const RARITY_BADGE: Record<string, string> = {
 
 export const InventoryModal: React.FC<InventoryModalProps> = ({
   slots,
+  equipment,
   devModeEnabled,
   onClose,
   onMoveOrSwap,
   onSplitStack,
   onDiscardItem,
+  onEquipItem,
+  onUseItem,
 }) => {
   const [selectedCategory, setSelectedCategory] = useState<'all' | ItemCategory>('all');
   const [selectedIdx, setSelectedIdx] = useState<number | null>(() => {
@@ -48,6 +59,8 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
       ? slots[selectedIdx]
       : null;
   const activeDef = activeSlot ? ITEM_CATALOG[activeSlot.itemId] : null;
+  const activeGear = activeSlot ? GEAR_STATS_BY_ITEM_ID[activeSlot.itemId] : undefined;
+  const activeConsume = activeSlot ? CONSUMABLE_EFFECTS_BY_ITEM_ID[activeSlot.itemId] : undefined;
 
   const stopPropagation = (e: React.SyntheticEvent) => {
     e.stopPropagation();
@@ -235,10 +248,62 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
                 <p className="mt-3 text-xs leading-relaxed text-[#c9c2b4]">
                   {activeDef.description}
                 </p>
+                {activeGear && (
+                  <div className="mt-2 rounded border border-[#e0a65c]/30 bg-[#221c14] px-2.5 py-1.5 text-[11px] text-[#ecd5ad]">
+                    {activeGear.slot.toUpperCase()}
+                    {activeGear.attackBonus > 0 ? ` · +${activeGear.attackBonus} ATK` : ''}
+                    {activeGear.defenseReduction > 0
+                      ? ` · ${Math.round(activeGear.defenseReduction * 100)}% Mitigation`
+                      : ''}
+                    {activeGear.warmthBonus > 0
+                      ? ` · +${Math.round(activeGear.warmthBonus * 100)}% Warmth`
+                      : ''}
+                  </div>
+                )}
+                {activeConsume && (
+                  <div className="mt-2 rounded border border-[#5a9276]/40 bg-[#182921] px-2.5 py-1.5 text-[11px] text-[#a5dbc0]">
+                    Restores +{activeConsume.healHp} HP · +{activeConsume.restoreStamina} Stamina
+                    {activeConsume.restoreWarmth > 0
+                      ? ` · +${activeConsume.restoreWarmth} Warmth`
+                      : ''}
+                  </div>
+                )}
+                {equipment && (
+                  <div className="mt-2 text-[10px] text-[#7e8a95]">
+                    Equipped: {equipment.weapon ? ITEM_CATALOG[equipment.weapon]?.name : 'Travel Blade'}
+                    {equipment.tool ? ` · ${ITEM_CATALOG[equipment.tool]?.name}` : ''}
+                  </div>
+                )}
               </div>
 
               {/* Actions */}
               <div className="mt-4 flex flex-col gap-1.5 border-t border-white/10 pt-3">
+                {activeGear && onEquipItem && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (selectedIdx !== null) onEquipItem(selectedIdx);
+                    }}
+                    className="flex min-h-[42px] items-center justify-center gap-1.5 rounded-lg border border-[#e0a65c]/70 bg-[#2a2216] px-3 py-1.5 text-xs font-medium text-[#f4e2c6] hover:bg-[#3a2f1e]"
+                  >
+                    <Shield className="h-3.5 w-3.5 text-[#e0a65c]" />
+                    <span>Equip ({activeGear.slot})</span>
+                  </button>
+                )}
+
+                {activeConsume && onUseItem && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (selectedIdx !== null) onUseItem(selectedIdx);
+                    }}
+                    className="flex min-h-[42px] items-center justify-center gap-1.5 rounded-lg border border-[#5a9276]/60 bg-[#182921] px-3 py-1.5 text-xs font-medium text-[#a5dbc0] hover:bg-[#22392e]"
+                  >
+                    <HeartPulse className="h-3.5 w-3.5" />
+                    <span>Consume / Use</span>
+                  </button>
+                )}
+
                 <button
                   type="button"
                   onClick={() => {

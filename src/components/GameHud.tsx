@@ -1,28 +1,34 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  Anvil,
   Backpack,
   BookOpen,
   ChevronDown,
   ChevronUp,
+  Clock,
   Compass,
   DoorOpen,
   Flame,
   Gamepad2,
+  Hammer,
   HelpCircle,
   MapPin,
   MessageSquare,
   Monitor,
+  Moon,
   Package,
   RotateCcw,
   Search,
   Settings,
   Sparkles,
+  Sun,
   Tv,
   Volume2,
   VolumeX,
   Wrench,
   X,
 } from 'lucide-react';
+import { DYNAMIC_EVENT_TEMPLATES } from '../data/exploration';
 import { DEV_TELEPORT_CATEGORIES } from '../game/devLocations';
 import { countUsedInventorySlots, INVENTORY_CAPACITY } from '../game/inventory';
 import {
@@ -38,6 +44,13 @@ import {
   PlayerVitals,
   ThornvaleSaveState,
 } from '../game/types';
+import {
+  DevExplorationSnapshot,
+  DynamicEventKind,
+  ExplorationAtmosphereState,
+} from '../types/exploration';
+import { PlayerSurvivalState } from '../types/gameplay';
+import { SurvivalMeters, WorkshopTab } from './GameplayHud';
 import { InventoryModal } from './InventoryModal';
 
 interface GameHudProps {
@@ -70,7 +83,24 @@ interface GameHudProps {
   onMoveInventorySlot: (fromIdx: number, toIdx: number) => void;
   onSplitInventorySlot: (slotIdx: number) => void;
   onDiscardInventoryItem: (slotIdx: number, amount?: number) => void;
+  onEquipInventorySlot?: (slotIdx: number) => void;
+  onUseInventorySlot?: (slotIdx: number) => void;
   onInventoryOpenChange?: (open: boolean) => void;
+  survival?: PlayerSurvivalState;
+  atmosphere?: ExplorationAtmosphereState;
+  devExplorationSnapshot?: DevExplorationSnapshot | null;
+  workshopOpen?: boolean;
+  stashOpen?: boolean;
+  placementActive?: boolean;
+  onToggleWorkshop?: (tab?: WorkshopTab) => void;
+  onCloseWorkshopAndStash?: () => void;
+  onSetDevTime?: (hour: number | null) => void;
+  onToggleDevCycle?: () => void;
+  onTriggerDevEvent?: (kind?: DynamicEventKind) => void;
+  onClearDevEvents?: () => void;
+  onSetDevMechanisms?: (open: boolean) => void;
+  onRevealDevJournal?: () => void;
+  onSpawnDevChest?: () => void;
 }
 
 const QUALITY_LABELS: Record<GraphicsQuality, string> = {
@@ -109,7 +139,24 @@ export const GameHud: React.FC<GameHudProps> = ({
   onMoveInventorySlot,
   onSplitInventorySlot,
   onDiscardInventoryItem,
+  onEquipInventorySlot,
+  onUseInventorySlot,
   onInventoryOpenChange,
+  survival,
+  atmosphere,
+  devExplorationSnapshot,
+  workshopOpen = false,
+  stashOpen = false,
+  placementActive = false,
+  onToggleWorkshop,
+  onCloseWorkshopAndStash,
+  onSetDevTime,
+  onToggleDevCycle,
+  onTriggerDevEvent,
+  onClearDevEvents,
+  onSetDevMechanisms,
+  onRevealDevJournal,
+  onSpawnDevChest,
 }) => {
   const [dockCollapsed, setDockCollapsed] = useState(() =>
     typeof window !== 'undefined' ? window.innerWidth < 768 : false
@@ -118,6 +165,7 @@ export const GameHud: React.FC<GameHudProps> = ({
   const [showPlaces, setShowPlaces] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showTeleport, setShowTeleport] = useState(false);
+  const [devModalTab, setDevModalTab] = useState<'locations' | 'exploration'>('locations');
   const [showInventory, setShowInventory] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<'All' | DevTeleportCategory>('All');
   const [searchQuery, setSearchQuery] = useState('');
@@ -125,6 +173,16 @@ export const GameHud: React.FC<GameHudProps> = ({
   useEffect(() => {
     onInventoryOpenChange?.(showInventory);
   }, [showInventory, onInventoryOpenChange]);
+
+  useEffect(() => {
+    if (workshopOpen || stashOpen) {
+      setShowInventory(false);
+      setShowHelp(false);
+      setShowPlaces(false);
+      setShowSettings(false);
+      setShowTeleport(false);
+    }
+  }, [workshopOpen, stashOpen]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -138,6 +196,7 @@ export const GameHud: React.FC<GameHudProps> = ({
       if (e.code === 'KeyH') {
         setDockCollapsed((v) => !v);
       } else if ((e.code === 'KeyI' || e.code === 'KeyB') && !e.repeat) {
+        onCloseWorkshopAndStash?.();
         setShowInventory((v) => {
           const next = !v;
           if (next) {
@@ -148,17 +207,32 @@ export const GameHud: React.FC<GameHudProps> = ({
           }
           return next;
         });
+      } else if (e.code === 'KeyC' && !e.repeat) {
+        setShowInventory(false);
+        setShowHelp(false);
+        setShowPlaces(false);
+        setShowSettings(false);
+        setShowTeleport(false);
+        onToggleWorkshop?.('craft');
+      } else if (e.code === 'KeyN' && !e.repeat) {
+        setShowInventory(false);
+        setShowHelp(false);
+        setShowPlaces(false);
+        setShowSettings(false);
+        setShowTeleport(false);
+        onToggleWorkshop?.('build');
       } else if (e.code === 'Escape') {
         setShowHelp(false);
         setShowPlaces(false);
         setShowSettings(false);
         setShowTeleport(false);
         setShowInventory(false);
+        onCloseWorkshopAndStash?.();
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, []);
+  }, [onToggleWorkshop, onCloseWorkshopAndStash]);
 
   useEffect(() => {
     if (!devModeEnabled) {
@@ -226,6 +300,22 @@ export const GameHud: React.FC<GameHudProps> = ({
         <p className="text-xs font-normal tracking-wide text-[#9ca8b3]">
           {zoneName}
         </p>
+        {atmosphere && (
+          <div className="mt-0.5 flex items-center gap-1.5 text-[11px] font-medium text-[#c5beb0]">
+            {atmosphere.isDuskOrNight ? (
+              <Moon className="h-3 w-3 text-[#88c8dc]" />
+            ) : (
+              <Sun className="h-3 w-3 text-[#e0a65c]" />
+            )}
+            <span className="capitalize">{atmosphere.phase}</span>
+            <span className="font-mono text-[#9ca8b3]">{atmosphere.hourLabel}</span>
+            {atmosphere.activeEventsCount > 0 && (
+              <span className="rounded border border-[#e0a65c]/30 bg-[#1a2229]/90 px-1.5 py-0.2 text-[10px] text-[#e6c58b]">
+                {atmosphere.activeEventsCount} nearby
+              </span>
+            )}
+          </div>
+        )}
         {showVitals && (
           <div className="mt-1.5 w-40 rounded-md border border-white/12 bg-[#141a20]/90 px-2.5 py-1.5">
             <div className="mb-1 flex items-center justify-between text-[10px] tracking-wide text-[#cfc6b6]">
@@ -242,17 +332,59 @@ export const GameHud: React.FC<GameHudProps> = ({
             </div>
           </div>
         )}
+        {survival && <SurvivalMeters survival={survival} />}
       </header>
 
-      {/* Top-Right Quick Actions: Pack & Developer Teleport (Desktop & Tablet Friendly >=44px) */}
+      {/* Top-Right Quick Actions: Workshop, Pack & Developer Teleport (Desktop & Tablet Friendly >=44px) */}
       <div
         onMouseDown={stopCanvasPropagation}
         onTouchStart={stopCanvasPropagation}
         className="pointer-events-auto fixed right-4 top-4 z-20 flex items-center gap-2"
       >
+        {onToggleWorkshop && (
+          <>
+            <button
+              type="button"
+              onClick={() => {
+                setShowInventory(false);
+                setShowTeleport(false);
+                setShowSettings(false);
+                setShowPlaces(false);
+                setShowHelp(false);
+                onToggleWorkshop('craft');
+              }}
+              aria-expanded={workshopOpen}
+              className={`flex min-h-[44px] items-center gap-2 rounded-lg border px-3.5 py-2 text-xs font-medium shadow-lg transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#e0a65c] ${
+                workshopOpen
+                  ? 'border-[#e0a65c]/80 bg-[#2a2319] text-[#f4e2c6]'
+                  : 'border-white/15 bg-[#191f26]/95 text-[#e6dfd2] hover:border-[#e0a65c]/65 hover:bg-[#242c35]'
+              }`}
+            >
+              <Anvil className="h-4 w-4 text-[#e0a65c]" />
+              <span>Workshop</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setShowInventory(false);
+                setShowTeleport(false);
+                setShowSettings(false);
+                setShowPlaces(false);
+                setShowHelp(false);
+                onToggleWorkshop('journal');
+              }}
+              className="flex min-h-[44px] items-center gap-2 rounded-lg border border-white/15 bg-[#191f26]/95 px-3 py-2 text-xs font-medium text-[#e6dfd2] shadow-lg transition-colors hover:border-[#e0a65c]/65 hover:bg-[#242c35] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#e0a65c]"
+            >
+              <BookOpen className="h-4 w-4 text-[#e0a65c]" />
+              <span className="hidden sm:inline">Journal</span>
+            </button>
+          </>
+        )}
+
         <button
           type="button"
           onClick={() => {
+            onCloseWorkshopAndStash?.();
             setShowInventory((v) => !v);
             setShowTeleport(false);
             setShowSettings(false);
@@ -276,6 +408,7 @@ export const GameHud: React.FC<GameHudProps> = ({
           <button
             type="button"
             onClick={() => {
+              onCloseWorkshopAndStash?.();
               setShowTeleport((v) => !v);
               setShowInventory(false);
               setShowSettings(false);
@@ -358,7 +491,7 @@ export const GameHud: React.FC<GameHudProps> = ({
       )}
 
       {/* Contextual Bottom-Center Interact Button (Clickable/Tappable + Keyboard F) */}
-      {!dialogue && !showInventory && interactPrompt && (
+      {!dialogue && !showInventory && !workshopOpen && !stashOpen && !placementActive && interactPrompt && (
         <div
           className={`pointer-events-none fixed left-1/2 z-20 -translate-x-1/2 ${promptBottomClass}`}
         >
@@ -369,10 +502,16 @@ export const GameHud: React.FC<GameHudProps> = ({
           >
             {interactPrompt.kind === 'npc' ? (
               <MessageSquare className="h-3.5 w-3.5 text-[#e0a65c]" />
-            ) : interactPrompt.kind === 'resource' ? (
+            ) : interactPrompt.kind === 'resource' || interactPrompt.kind === 'chest' ? (
               <Package className="h-3.5 w-3.5 text-[#e0a65c]" />
-            ) : interactPrompt.kind === 'found_item' ? (
+            ) : interactPrompt.kind === 'found_item' || interactPrompt.kind === 'event' ? (
               <Sparkles className="h-3.5 w-3.5 text-[#e0a65c]" />
+            ) : interactPrompt.kind === 'structure' ? (
+              <Hammer className="h-3.5 w-3.5 text-[#e0a65c]" />
+            ) : interactPrompt.kind === 'mechanism' ? (
+              <Wrench className="h-3.5 w-3.5 text-[#e0a65c]" />
+            ) : interactPrompt.kind === 'lore' ? (
+              <BookOpen className="h-3.5 w-3.5 text-[#e0a65c]" />
             ) : (
               <DoorOpen className="h-3.5 w-3.5 text-[#e0a65c]" />
             )}
@@ -388,11 +527,14 @@ export const GameHud: React.FC<GameHudProps> = ({
       {showInventory && (
         <InventoryModal
           slots={saveState.inventory}
+          equipment={saveState.gameplay?.equipment}
           devModeEnabled={devModeEnabled}
           onClose={() => setShowInventory(false)}
           onMoveOrSwap={onMoveInventorySlot}
           onSplitStack={onSplitInventorySlot}
           onDiscardItem={onDiscardInventoryItem}
+          onEquipItem={onEquipInventorySlot}
+          onUseItem={onUseInventorySlot}
         />
       )}
 
@@ -427,74 +569,242 @@ export const GameHud: React.FC<GameHudProps> = ({
             </button>
           </div>
 
-          <div className="flex flex-col gap-2.5 border-b border-white/10 px-4 py-2.5">
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#7e8a94]" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyDown={(e) => e.stopPropagation()}
-                onKeyUp={(e) => e.stopPropagation()}
-                placeholder="Search landmarks, dwellings, caves, dungeons..."
-                className="w-full rounded-lg border border-white/15 bg-[#1b222a] py-2 pl-9 pr-3 text-xs text-[#ece5d8] placeholder-[#6f7b85] focus:border-[#e0a65c]/70 focus:outline-none"
-              />
-            </div>
-
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
-              {(['All', ...DEV_TELEPORT_CATEGORIES] as const).map((cat) => {
-                const active = selectedCategory === cat;
-                return (
-                  <button
-                    key={cat}
-                    type="button"
-                    onClick={() => setSelectedCategory(cat)}
-                    className={`min-h-[34px] shrink-0 whitespace-nowrap rounded-lg px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                      active
-                        ? 'border border-[#e0a65c]/70 bg-[#2a2319] text-[#f2dec0]'
-                        : 'border border-white/10 bg-[#192027] text-[#98a4ae] hover:bg-white/5 hover:text-[#e8e2d5]'
-                    }`}
-                  >
-                    {cat}
-                  </button>
-                );
-              })}
-            </div>
+          {/* Dev Modal Sub-Tabs */}
+          <div className="grid grid-cols-2 gap-1.5 border-b border-white/10 px-4 py-2">
+            <button
+              type="button"
+              onClick={() => setDevModalTab('locations')}
+              className={`flex min-h-[36px] items-center justify-center gap-1.5 rounded-lg border px-2 py-1 text-[11px] font-medium ${
+                devModalTab === 'locations'
+                  ? 'border-[#e0a65c]/70 bg-[#2a2319] text-[#f2dec0]'
+                  : 'border-white/10 bg-[#182027] text-[#98a4ae] hover:text-[#e8e2d5]'
+              }`}
+            >
+              <MapPin className="h-3.5 w-3.5 text-[#e0a65c]" />
+              <span>Locations</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setDevModalTab('exploration')}
+              className={`flex min-h-[36px] items-center justify-center gap-1.5 rounded-lg border px-2 py-1 text-[11px] font-medium ${
+                devModalTab === 'exploration'
+                  ? 'border-[#e0a65c]/70 bg-[#2a2319] text-[#f2dec0]'
+                  : 'border-white/10 bg-[#182027] text-[#98a4ae] hover:text-[#e8e2d5]'
+              }`}
+            >
+              <Clock className="h-3.5 w-3.5 text-[#e0a65c]" />
+              <span>Exploration & Night Sandbox</span>
+            </button>
           </div>
 
-          <div className="flex-1 overflow-y-auto px-3 py-2.5">
-            {filteredLocations.length === 0 ? (
-              <p className="py-8 text-center text-xs text-[#7c8791]">
-                No destinations match this filter.
-              </p>
-            ) : (
-              <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-                {filteredLocations.map((pt) => (
-                  <button
-                    key={pt.id}
-                    type="button"
-                    onClick={() => {
-                      onDevTeleport(pt.id);
-                      setShowTeleport(false);
-                    }}
-                    className="flex min-h-[48px] items-center justify-between gap-2 rounded-lg border border-white/10 bg-[#182027] px-3 py-2 text-left transition-colors hover:border-[#e0a65c]/65 hover:bg-[#222c35]"
-                  >
-                    <div className="min-w-0">
-                      <div className="truncate font-medium text-[#ede5d6]">
-                        {pt.name}
-                      </div>
-                      <div className="truncate text-[10px] text-[#8d98a3]">
-                        {pt.category} · {pt.subtitle}
-                      </div>
-                    </div>
-                    <span className="shrink-0 rounded border border-white/10 bg-[#12171d] px-2 py-0.5 font-mono text-[10px] text-[#e0a65c]">
-                      {pt.targetEnv === 'overworld' ? 'EXT' : 'INT'}
-                    </span>
-                  </button>
-                ))}
+          {devModalTab === 'locations' ? (
+            <>
+              <div className="flex flex-col gap-2.5 border-b border-white/10 px-4 py-2.5">
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#7e8a94]" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onKeyDown={(e) => e.stopPropagation()}
+                    onKeyUp={(e) => e.stopPropagation()}
+                    placeholder="Search landmarks, dwellings, caves, dungeons..."
+                    className="w-full rounded-lg border border-white/15 bg-[#1b222a] py-2 pl-9 pr-3 text-xs text-[#ece5d8] placeholder-[#6f7b85] focus:border-[#e0a65c]/70 focus:outline-none"
+                  />
+                </div>
+
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
+                  {(['All', ...DEV_TELEPORT_CATEGORIES] as const).map((cat) => {
+                    const active = selectedCategory === cat;
+                    return (
+                      <button
+                        key={cat}
+                        type="button"
+                        onClick={() => setSelectedCategory(cat)}
+                        className={`min-h-[34px] shrink-0 whitespace-nowrap rounded-lg px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                          active
+                            ? 'border border-[#e0a65c]/70 bg-[#2a2319] text-[#f2dec0]'
+                            : 'border border-white/10 bg-[#192027] text-[#98a4ae] hover:bg-white/5 hover:text-[#e8e2d5]'
+                        }`}
+                      >
+                        {cat}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-            )}
-          </div>
+
+              <div className="flex-1 overflow-y-auto px-3 py-2.5">
+                {filteredLocations.length === 0 ? (
+                  <p className="py-8 text-center text-xs text-[#7c8791]">
+                    No destinations match this filter.
+                  </p>
+                ) : (
+                  <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                    {filteredLocations.map((pt) => (
+                      <button
+                        key={pt.id}
+                        type="button"
+                        onClick={() => {
+                          onDevTeleport(pt.id);
+                          setShowTeleport(false);
+                        }}
+                        className="flex min-h-[48px] items-center justify-between gap-2 rounded-lg border border-white/10 bg-[#182027] px-3 py-2 text-left transition-colors hover:border-[#e0a65c]/65 hover:bg-[#222c35]"
+                      >
+                        <div className="min-w-0">
+                          <div className="truncate font-medium text-[#ede5d6]">
+                            {pt.name}
+                          </div>
+                          <div className="truncate text-[10px] text-[#8d98a3]">
+                            {pt.category} · {pt.subtitle}
+                          </div>
+                        </div>
+                        <span className="shrink-0 rounded border border-white/10 bg-[#12171d] px-2 py-0.5 font-mono text-[10px] text-[#e0a65c]">
+                          {pt.targetEnv === 'overworld' ? 'EXT' : 'INT'}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </>
+          ) : (
+            <div className="flex flex-1 flex-col gap-3 overflow-y-auto px-4 py-3">
+              {/* Day/Night Time Overrides */}
+              <div className="rounded-lg border border-white/10 bg-[#182027] p-3">
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="font-medium text-[#f0dec0]">Day / Night Cycle Control</span>
+                  {atmosphere && (
+                    <span className="font-mono text-[11px] capitalize text-[#e0a65c]">
+                      {atmosphere.phase} · {atmosphere.hourLabel}
+                    </span>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {[
+                    { label: 'Dawn (06:00)', hour: 6 },
+                    { label: 'Day (13:00)', hour: 13 },
+                    { label: 'Dusk (19:00)', hour: 19 },
+                    { label: 'Night (23:30)', hour: 23.5 },
+                    { label: 'Live Cycle', hour: null },
+                  ].map((preset) => (
+                    <button
+                      key={preset.label}
+                      type="button"
+                      onClick={() => onSetDevTime?.(preset.hour)}
+                      className="min-h-[34px] rounded-lg border border-white/15 bg-[#12171d] px-2.5 py-1 text-[11px] text-[#e2dacb] hover:border-[#e0a65c]/70"
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => onToggleDevCycle?.()}
+                    className="min-h-[34px] rounded-lg border border-[#e0a65c]/50 bg-[#262018] px-2.5 py-1 text-[11px] text-[#f0dec0]"
+                  >
+                    {atmosphere?.cyclePaused ? 'Resume Cycle' : 'Pause Cycle'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Sandbox Snapshot Counters */}
+              {devExplorationSnapshot && (
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  <div className="rounded-lg border border-white/10 bg-[#182027] px-2.5 py-2">
+                    <div className="text-[10px] text-[#8d98a3]">Mechanisms</div>
+                    <div className="font-mono text-xs text-[#f0dec0]">
+                      {devExplorationSnapshot.activatedMechanismsCount}/
+                      {devExplorationSnapshot.totalMechanismsCount}
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-white/10 bg-[#182027] px-2.5 py-2">
+                    <div className="text-[10px] text-[#8d98a3]">Chests</div>
+                    <div className="font-mono text-xs text-[#f0dec0]">
+                      {devExplorationSnapshot.openedChestsCount}/
+                      {devExplorationSnapshot.totalChestsCount}
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-white/10 bg-[#182027] px-2.5 py-2">
+                    <div className="text-[10px] text-[#8d98a3]">Journal</div>
+                    <div className="font-mono text-xs text-[#f0dec0]">
+                      {devExplorationSnapshot.journalCount}/
+                      {devExplorationSnapshot.totalJournalCount}
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-white/10 bg-[#182027] px-2.5 py-2">
+                    <div className="text-[10px] text-[#8d98a3]">Active Events</div>
+                    <div className="font-mono text-xs text-[#f0dec0]">
+                      {devExplorationSnapshot.activeEvents.length}/2
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Dynamic Event Spawner */}
+              <div className="rounded-lg border border-white/10 bg-[#182027] p-3">
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="font-medium text-[#f0dec0]">
+                    Dynamic Events (Outdoors Only)
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => onClearDevEvents?.()}
+                    className="rounded border border-white/15 bg-[#12171d] px-2 py-0.5 text-[10px] text-[#d4a69e] hover:border-[#b35147]"
+                  >
+                    Clear Events
+                  </button>
+                </div>
+                <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                  {DYNAMIC_EVENT_TEMPLATES.map((tpl) => (
+                    <button
+                      key={tpl.kind}
+                      type="button"
+                      onClick={() => onTriggerDevEvent?.(tpl.kind)}
+                      className="flex min-h-[38px] items-center justify-between gap-2 rounded-lg border border-white/12 bg-[#12171d] px-2.5 py-1.5 text-left text-[11px] text-[#e5dfd2] hover:border-[#e0a65c]/70"
+                    >
+                      <span className="truncate">{tpl.title}</span>
+                      <span className="shrink-0 font-mono text-[10px] text-[#e0a65c]">Spawn</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Secret Mechanisms & Test Cache */}
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => onSetDevMechanisms?.(true)}
+                  className="min-h-[38px] rounded-lg border border-[#e0a65c]/50 bg-[#262018] px-3 py-1.5 text-[11px] text-[#f0dec0] hover:border-[#e0a65c]"
+                >
+                  Open All Secret Doors
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onSetDevMechanisms?.(false)}
+                  className="min-h-[38px] rounded-lg border border-white/15 bg-[#182027] px-3 py-1.5 text-[11px] text-[#cfd7df] hover:bg-white/10"
+                >
+                  Reset Secret Doors
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onRevealDevJournal?.()}
+                  className="min-h-[38px] rounded-lg border border-white/15 bg-[#182027] px-3 py-1.5 text-[11px] text-[#cfd7df] hover:border-[#e0a65c]/60"
+                >
+                  Unlock Journal & Recipes
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onSpawnDevChest?.();
+                    setShowTeleport(false);
+                  }}
+                  className="min-h-[38px] rounded-lg border border-[#6da876]/55 bg-[#18261c] px-3 py-1.5 text-[11px] text-[#b4e2bc] hover:bg-[#223527]"
+                >
+                  Spawn Test Cache Ahead
+                </button>
+              </div>
+            </div>
+          )}
 
           <div className="flex flex-wrap items-center justify-between gap-2 border-t border-white/10 px-4 py-2.5">
             <button
@@ -708,6 +1018,12 @@ export const GameHud: React.FC<GameHudProps> = ({
             </div>
             <div>
               <span className="text-[#e0a65c]">Pack (Bag)</span> — I / B
+            </div>
+            <div>
+              <span className="text-[#e0a65c]">Workshop / Build</span> — C / N
+            </div>
+            <div>
+              <span className="text-[#e0a65c]">Rotate / Dismantle</span> — T / X
             </div>
             <div>
               <span className="text-[#e0a65c]">Zoom</span> — Scroll Wheel

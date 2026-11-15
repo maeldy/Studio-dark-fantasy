@@ -215,6 +215,11 @@ function buildCabinInterior(
   addLitCasementWindow(ctx, mats, -5.92, 4.7, -2.5, 1.25, 1.25, Math.PI * 0.5);
   addLitCasementWindow(ctx, mats, 5.92, 4.7, -2.5, 1.25, 1.25, Math.PI * 0.5);
 
+  // Ground-Floor Northwest Wainscoted Smuggler Alcove (x = -6.2..-3.6, z = -6.4..-3.6)
+  // Doorway gap at x = -5.9..-3.9, z = -3.6 is sealed by ExplorationSystem's false wainscot panel!
+  addSolidWall(ctx, mats.timber, -3.6, 0, -5.0, 0.32, 3.15, 2.8);
+  addSolidWall(ctx, mats.timber, -6.05, 0, -3.6, 0.3, 3.15, 0.32);
+
   // Hearth Hall: Sunken Stone Fireplace on West wall + Woven Rug + Dining Set
   addStoneFireplace(ctx, mats, -5.3, 0, 0.2, Math.PI * 0.5, true, 1.1);
   addWovenRug(ctx, mats.rug, -1.6, 0, 0.4, 3.8, 4.8);
@@ -524,9 +529,17 @@ function buildTowerInterior(
   const interactables: InteriorInteractable[] = [];
   const portals: PortalLink[] = [];
 
-  // Floor 1 (y = 0, 8.2m x 8.2m) & tall keep stone perimeter (height 7.8m)
+  // Floor 1 (y = 0, 8.2m x 8.2m) & tall keep stone perimeter (height 7.6m)
+  // Leave Floor 2 NW doorway open at West wall (x = -4.2, y = 3.4..6.6, z = -3.6..-1.6) for Secret Armory
   addFloorSlab(ctx, mats.stone, 0, 0, 0, 8.4, 8.4);
-  makeRoomPerimeterWalls(ctx, mats.stone, 0, 0, 0, 8.4, 8.4, 7.6);
+  addSolidWall(ctx, mats.stone, 0, 0, -4.2, 8.4, 7.6, 0.45);
+  addSolidWall(ctx, mats.stone, 0, 0, 4.2, 8.4, 7.6, 0.45);
+  addSolidWall(ctx, mats.stone, 4.2, 0, 0, 0.45, 7.6, 8.4);
+  // West wall lower tier (y = 0..3.4), upper rim (y = 6.7..7.6), and Floor 2 piers flanking z = -2.6 (gap 2.0m)
+  addSolidWall(ctx, mats.stone, -4.2, 0, 0, 0.45, 3.4, 8.4);
+  addSolidWall(ctx, mats.stone, -4.2, 6.7, 0, 0.45, 0.9, 8.4);
+  addSolidWall(ctx, mats.stone, -4.2, 3.4, -3.9, 0.45, 3.3, 0.6);
+  addSolidWall(ctx, mats.stone, -4.2, 3.4, 1.3, 0.45, 3.3, 5.8);
 
   addEntryDoorMesh(ctx, mats, 0, 0, 4.0, 1.65, 2.6, true);
   portals.push({
@@ -575,6 +588,16 @@ function buildTowerInterior(
   addWallTorchSconce(ctx, mats, -3.92, 5.3, -1.2, 1, 0, 3.6, true, 6.0, 11);
   addChestAndDrawer(ctx, mats, 0.1, 3.4, 3.35, Math.PI);
   addWeaponArmorRack(ctx, mats, -0.35, 3.4, 0.45, 0);
+
+  // Secret Watch Armory Annex (Floor 2 West Wing: x = -7.8..-4.2, y = 3.4, z = -4.2..-1.0)
+  addFloorSlab(ctx, mats.stone, -6.0, 3.4, -2.6, 3.8, 3.2, 0.24, true, true);
+  makeRoomPerimeterWalls(ctx, mats.stone, -6.0, 3.4, -2.6, 3.6, 3.2, 3.3, {
+    side: 'east',
+    gapWidth: 2.0,
+  });
+  addCeilingSlab(ctx, mats.darkStone, -6.0, 6.7, -2.6, 4.0, 3.6);
+  addWeaponArmorRack(ctx, mats, -6.8, 3.4, -1.55, 0);
+  addWallTorchSconce(ctx, mats, -7.55, 5.1, -2.6, 1, 0, 5.2, true, 5.4, 10);
 
   // Staircase 2 (L-Turn Switchback with Mid-Landing at y = 5.1 -> opens cleanly onto SE Floor 3)
   addWalkableStaircase(ctx, mats.woodPlank, -3.05, 0.4, 1.75, 3.2, 3.4, 5.1, 'z', 1, 8, mats.bark, {
@@ -686,7 +709,7 @@ function buildTowerInterior(
     embers: ctx.embers,
     lightAnchors: ctx.lightAnchors,
     cameraOccluders: ctx.cameraOccluders,
-    boundsRadius: 6.0,
+    boundsRadius: 10.5,
     dispose: () => disposeInteriorGroup(root),
   };
 }
@@ -712,9 +735,12 @@ function buildShrineInterior(
   const interactables: InteriorInteractable[] = [];
   const portals: PortalLink[] = [];
 
-  // Long pillared temple hall (12.6m wide x 20.4m deep)
+  // Long pillared temple hall (12.8m wide x 20.6m deep) with North Reliquary doorway
   addFloorSlab(ctx, mats.carvedStone, 0, 0, 0, 12.8, 20.6);
-  makeRoomPerimeterWalls(ctx, mats.darkStone, 0, 0, 0, 12.8, 20.6, 6.2);
+  makeRoomPerimeterWalls(ctx, mats.darkStone, 0, 0, 0, 12.8, 20.6, 6.2, {
+    side: 'north',
+    gapWidth: 2.6,
+  });
   addCeilingSlab(ctx, mats.darkStone, 0, 6.1, 0, 13.2, 21.0);
 
   // Entry Double Door (South z = 10.0)
@@ -757,9 +783,20 @@ function buildShrineInterior(
     root.add(rootStrand);
   }
 
-  // Raised Inner Altar Dais at North End (z = -6.8 .. -9.5, y = 0.72)
-  addFloorSlab(ctx, mats.carvedStone, 0, 0.72, -7.8, 8.6, 4.2, 0.72, true);
+  // Raised Inner Altar Dais at North End (z = -5.7 .. -10.4, y = 0.72)
+  addFloorSlab(ctx, mats.carvedStone, 0, 0.72, -8.05, 8.6, 4.7, 0.72, true);
   addWalkableStaircase(ctx, mats.mossStone, 0, -5.2, 4.2, 1.4, 0, 0.72, 'z', -1, 4);
+
+  // North Moonstone Reliquary Alcove (behind Moon-Seal at z = -10.3)
+  addFloorSlab(ctx, mats.carvedStone, 0, 0.72, -12.3, 4.8, 4.2, 0.72, true);
+  makeRoomPerimeterWalls(ctx, mats.darkStone, 0, 0.72, -12.3, 4.8, 4.2, 5.4, {
+    side: 'south',
+    gapWidth: 2.6,
+  });
+  addCeilingSlab(ctx, mats.darkStone, 0, 6.1, -12.3, 5.2, 4.6);
+  addStonePillar(ctx, mats.carvedStone, mats.mossStone, -1.9, 0.72, -13.9, 0.34, 5.2);
+  addStonePillar(ctx, mats.carvedStone, mats.mossStone, 1.9, 0.72, -13.9, 0.34, 5.2);
+  addWallTorchSconce(ctx, mats, 0, 3.0, -14.1, 0, 1, 5.8, true, 5.4, 11);
 
   const altarBody = new THREE.Mesh(new THREE.BoxGeometry(2.8, 1.05, 1.35), mats.carvedStone);
   altarBody.position.set(0, 0.72 + 0.52, -8.2);
@@ -841,7 +878,7 @@ function buildShrineInterior(
     embers: ctx.embers,
     lightAnchors: ctx.lightAnchors,
     cameraOccluders: ctx.cameraOccluders,
-    boundsRadius: 11.5,
+    boundsRadius: 16.0,
     dispose: () => disposeInteriorGroup(root),
   };
 }
@@ -1270,13 +1307,24 @@ function buildCaveAncient(
     },
   });
 
-  // Inner Forgotten Barrow Tomb (z = -7.6 .. -16.8, y = -1.6)
+  // Inner Forgotten Barrow Tomb (z = -7.6 .. -16.8, y = -1.6) with West Secret Burial Niche (z = -14.4..-12.0)
   addFloorSlab(ctx, mats.carvedStone, 0, -1.6, -12.2, 9.6, 9.2);
-  makeRoomPerimeterWalls(ctx, mats.carvedStone, 0, -1.6, -12.2, 9.6, 9.2, 5.6, {
-    side: 'south',
-    gapWidth: 2.6,
-  });
+  addSolidWall(ctx, mats.carvedStone, 0, -1.6, -16.8, 9.6, 5.6, 0.45);
+  addSolidWall(ctx, mats.carvedStone, -3.05, -1.6, -7.6, 3.5, 5.6, 0.45);
+  addSolidWall(ctx, mats.carvedStone, 3.05, -1.6, -7.6, 3.5, 5.6, 0.45);
+  addSolidWall(ctx, mats.carvedStone, 4.8, -1.6, -12.2, 0.45, 5.6, 9.2);
+  addSolidWall(ctx, mats.carvedStone, -4.8, -1.6, -9.8, 0.45, 5.6, 4.4);
+  addSolidWall(ctx, mats.carvedStone, -4.8, -1.6, -15.6, 0.45, 5.6, 2.4);
   addCeilingSlab(ctx, mats.caveRock, 0, 3.9, -12.2, 10.0, 9.6);
+
+  // Hidden Barrow Burial Niche (x = -9.2..-4.8, y = -1.6, z = -15.4..-11.0)
+  addFloorSlab(ctx, mats.carvedStone, -7.0, -1.6, -13.2, 4.6, 4.4);
+  makeRoomPerimeterWalls(ctx, mats.carvedStone, -7.0, -1.6, -13.2, 4.4, 4.4, 4.6, {
+    side: 'east',
+    gapWidth: 2.4,
+  });
+  addCeilingSlab(ctx, mats.caveRock, -7.0, 3.0, -13.2, 4.8, 4.8);
+  addWallTorchSconce(ctx, mats, -8.85, 0.45, -13.2, 1, 0, 4.9, true, 5.4, 10);
 
   addSarcophagus(ctx, mats, 0, -1.6, -13.2, 0);
   addHoodedStatue(ctx, mats, -3.3, -1.6, -14.8, 0.6, 1.0);
@@ -1355,7 +1403,7 @@ function buildCaveAncient(
     embers: ctx.embers,
     lightAnchors: ctx.lightAnchors,
     cameraOccluders: ctx.cameraOccluders,
-    boundsRadius: 19.0,
+    boundsRadius: 22.5,
     dispose: () => disposeInteriorGroup(root),
   };
 }
@@ -1614,8 +1662,9 @@ function buildDungeonVault(
   addFloorSlab(ctx, mats.carvedStone, 0, 0, 4.8, 15.0, 17.6);
   // South wall
   addSolidWall(ctx, mats.dungeonBrick, 0, 0, 13.6, 15.0, 6.4, 0.55);
-  // West wall (gap at z = -1..3 for chasm bridge? No, West chasm leads north from West or North-West; let's open North wall center z = -4.0 AND East Armory Wing at x = 7.5, z = 4.8!)
-  addSolidWall(ctx, mats.dungeonBrick, -7.5, 0, 4.8, 0.55, 6.4, 17.6);
+  // West wall with sealed Treasury arch gap (z = 2.8 .. 6.8) leading to West Treasury Wing
+  addSolidWall(ctx, mats.dungeonBrick, -7.5, 0, -0.6, 0.55, 6.4, 6.8);
+  addSolidWall(ctx, mats.dungeonBrick, -7.5, 0, 10.2, 0.55, 6.4, 6.8);
   // East wall with wide arch gap (z = 2.8 .. 6.8) to Armory Wing
   addSolidWall(ctx, mats.dungeonBrick, 7.5, 0, -0.6, 0.55, 6.4, 6.8);
   addSolidWall(ctx, mats.dungeonBrick, 7.5, 0, 10.2, 0.55, 6.4, 6.8);
@@ -1663,6 +1712,18 @@ function buildDungeonVault(
   addWeaponArmorRack(ctx, mats, 13.3, 0, 7.0, -Math.PI * 0.5);
   addDiningTableSet(ctx, mats, 10.8, 0, 4.8, 2.2, 1.0, Math.PI * 0.5, 2);
   addWallTorchSconce(ctx, mats, 14.1, 2.2, 4.8, -1, 0, 4.4, true, 5.8, 12);
+
+  // 2b. Sealed West Citadel Treasury Wing (x = -14.5..-7.5, z = 1.0..8.6, y = 0)
+  addFloorSlab(ctx, mats.carvedStone, -11.0, 0, 4.8, 7.0, 7.6);
+  makeRoomPerimeterWalls(ctx, mats.dungeonBrick, -11.0, 0, 4.8, 7.0, 7.6, 5.2, {
+    side: 'east',
+    gapWidth: 4.0,
+  });
+  addCeilingSlab(ctx, mats.dungeonBrick, -11.0, 5.1, 4.8, 7.4, 8.0);
+  addStonePillar(ctx, mats.carvedStone, mats.darkStone, -10.2, 0, 2.5, 0.44, 5.0);
+  addStonePillar(ctx, mats.carvedStone, mats.darkStone, -10.2, 0, 7.1, 0.44, 5.0);
+  addInteriorBrazier(ctx, mats, -13.2, 0, 2.5, true, 1.4, '#ffaa44', 6.5);
+  addInteriorBrazier(ctx, mats, -13.2, 0, 7.1, true, 3.8, '#ffaa44', 6.5);
 
   // 3. Natural Subterranean Cavern Gorge Crossing (z = -4.0 .. -12.0) connecting Citadel Hall to Inner Sanctum
   const gorgeVoid = new THREE.Mesh(new THREE.BoxGeometry(16, 0.5, 8.5), mats.voidMat);
@@ -1800,22 +1861,27 @@ export function buildInteriorById(
   textures: ProceduralTextures,
   saveState: ThornvaleSaveState,
   onSaveChange: (updater: (prev: ThornvaleSaveState) => ThornvaleSaveState) => void,
-  getLiveSaveState?: () => ThornvaleSaveState
+  getLiveSaveState?: () => ThornvaleSaveState,
+  onLocationTrigger?: (triggerId: string) => void
 ): InteriorInstance {
   const readState = getLiveSaveState ?? (() => saveState);
   const actions: InteriorPersistenceActions = {
     isDoorOpen: (doorId) => !!readState().openedDoors[doorId],
-    setDoorOpen: (doorId, open) =>
+    setDoorOpen: (doorId, open) => {
       onSaveChange((prev) => ({
         ...prev,
         openedDoors: { ...prev.openedDoors, [doorId]: open },
-      })),
+      }));
+      if (open) onLocationTrigger?.(doorId);
+    },
     isBrazierLit: (brazierId) => !!readState().litBraziers[brazierId],
-    setBrazierLit: (brazierId, lit) =>
+    setBrazierLit: (brazierId, lit) => {
       onSaveChange((prev) => ({
         ...prev,
         litBraziers: { ...prev.litBraziers, [brazierId]: lit },
-      })),
+      }));
+      if (lit) onLocationTrigger?.(brazierId);
+    },
     isRelicCollected: (relicId) => !!readState().collectedRelics[relicId],
     collectRelic: (relicId) =>
       onSaveChange((prev) => ({

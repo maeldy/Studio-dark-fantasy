@@ -184,6 +184,113 @@ export class ForestAudioSystem {
     osc.stop(now + 0.28);
   }
 
+  public playExplorationCue(
+    kind:
+      | 'mechanism_slide'
+      | 'lever_clunk'
+      | 'chest_creak'
+      | 'secret_chime'
+      | 'locked_rattle'
+      | 'lore_whisper'
+  ): void {
+    if (!this.ctx || !this.ambientBus || !this.enabled) return;
+    const now = this.ctx.currentTime;
+
+    if (kind === 'mechanism_slide') {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(72, now);
+      osc.frequency.linearRampToValueAtTime(52, now + 0.55);
+      const filt = this.ctx.createBiquadFilter();
+      filt.type = 'lowpass';
+      filt.frequency.value = 210;
+      gain.gain.setValueAtTime(0.001, now);
+      gain.gain.linearRampToValueAtTime(0.16, now + 0.06);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+      osc.connect(filt);
+      filt.connect(gain);
+      gain.connect(this.ambientBus);
+      osc.start(now);
+      osc.stop(now + 0.62);
+      return;
+    }
+
+    if (kind === 'secret_chime') {
+      const freqs = [392.0, 523.25, 659.25];
+      for (let i = 0; i < freqs.length; i++) {
+        const t = now + i * 0.09;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freqs[i], t);
+        gain.gain.setValueAtTime(0.001, t);
+        gain.gain.linearRampToValueAtTime(0.09, t + 0.03);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.45);
+        osc.connect(gain);
+        gain.connect(this.ambientBus);
+        osc.start(t);
+        osc.stop(t + 0.47);
+      }
+      return;
+    }
+
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    if (kind === 'lever_clunk') {
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(140, now);
+      osc.frequency.exponentialRampToValueAtTime(68, now + 0.16);
+      gain.gain.setValueAtTime(0.001, now);
+      gain.gain.linearRampToValueAtTime(0.15, now + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+      osc.connect(gain);
+      gain.connect(this.ambientBus);
+      osc.start(now);
+      osc.stop(now + 0.2);
+      return;
+    }
+    if (kind === 'chest_creak') {
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(195, now);
+      osc.frequency.linearRampToValueAtTime(280, now + 0.18);
+      osc.frequency.exponentialRampToValueAtTime(150, now + 0.34);
+      gain.gain.setValueAtTime(0.001, now);
+      gain.gain.linearRampToValueAtTime(0.12, now + 0.04);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.36);
+      osc.connect(gain);
+      gain.connect(this.ambientBus);
+      osc.start(now);
+      osc.stop(now + 0.38);
+      return;
+    }
+    if (kind === 'locked_rattle') {
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(115, now);
+      osc.frequency.setValueAtTime(92, now + 0.07);
+      gain.gain.setValueAtTime(0.001, now);
+      gain.gain.linearRampToValueAtTime(0.07, now + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+      osc.connect(gain);
+      gain.connect(this.ambientBus);
+      osc.start(now);
+      osc.stop(now + 0.2);
+      return;
+    }
+
+    // lore_whisper
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(329.63, now);
+    osc.frequency.exponentialRampToValueAtTime(440, now + 0.35);
+    gain.gain.setValueAtTime(0.001, now);
+    gain.gain.linearRampToValueAtTime(0.07, now + 0.06);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.42);
+    osc.connect(gain);
+    gain.connect(this.ambientBus);
+    osc.start(now);
+    osc.stop(now + 0.44);
+  }
+
   public playGatherCue(kind: 'foliage' | 'mineral' | 'curio' | 'locked'): void {
     if (!this.ctx || !this.ambientBus || !this.enabled) return;
     const now = this.ctx.currentTime;

@@ -1,8 +1,142 @@
+import { ExplorationSaveData } from '../types/exploration';
+import {
+  BuildableStructureId,
+  GameplaySaveData,
+  PlacedStructureRecord,
+  QuestProgressRecord,
+  StructureEnvironmentId,
+} from '../types/gameplay';
 import { cloneInventorySlots, createEmptyInventory, normalizeInventory } from './inventory';
 import { ResourceNodeStateEntry, ThornvaleSaveState } from './types';
 
 export const WORLD_SEED = 13379;
 const STORAGE_KEY = 'thornvale_world_save_v1';
+export const STASH_CAPACITY = 18;
+
+const VALID_STRUCTURE_IDS = new Set<string>([
+  'campfire',
+  'workbench',
+  'storage_chest',
+  'watch_lantern',
+  'timber_palisade',
+  'field_shelter',
+]);
+
+export function createDefaultGameplaySave(): GameplaySaveData {
+  return {
+    equipment: {
+      weapon: null,
+      tool: null,
+      armor: null,
+      shield: null,
+    },
+    placedStructures: [],
+    stash: createEmptyInventory(STASH_CAPACITY),
+    questStates: {},
+    stats: {
+      craftedCount: 0,
+      builtCount: 0,
+      gatheredCount: 0,
+      defeatedCount: 0,
+    },
+  };
+}
+
+export function cloneGameplaySave(raw?: GameplaySaveData): GameplaySaveData {
+  if (!raw) return createDefaultGameplaySave();
+  const questStates: Record<string, QuestProgressRecord> = {};
+  if (raw.questStates) {
+    for (const [k, v] of Object.entries(raw.questStates)) {
+      if (v) {
+        questStates[k] = {
+          progress: Math.max(0, Math.floor(v.progress || 0)),
+          completed: !!v.completed,
+          claimed: !!v.claimed,
+        };
+      }
+    }
+  }
+  const placedStructures: PlacedStructureRecord[] = Array.isArray(raw.placedStructures)
+    ? raw.placedStructures
+        .filter(
+          (s) =>
+            s &&
+            typeof s.id === 'string' &&
+            VALID_STRUCTURE_IDS.has(s.structureId) &&
+            typeof s.environmentId === 'string' &&
+            Number.isFinite(s.x) &&
+            Number.isFinite(s.y) &&
+            Number.isFinite(s.z)
+        )
+        .map((s) => ({
+          id: s.id,
+          structureId: s.structureId as BuildableStructureId,
+          environmentId: s.environmentId as StructureEnvironmentId,
+          x: s.x,
+          y: s.y,
+          z: s.z,
+          rotY: Number.isFinite(s.rotY) ? s.rotY : 0,
+          placedAt: typeof s.placedAt === 'number' ? s.placedAt : Date.now(),
+        }))
+    : [];
+
+  return {
+    equipment: {
+      weapon: typeof raw.equipment?.weapon === 'string' ? raw.equipment.weapon : null,
+      tool: typeof raw.equipment?.tool === 'string' ? raw.equipment.tool : null,
+      armor: typeof raw.equipment?.armor === 'string' ? raw.equipment.armor : null,
+      shield: typeof raw.equipment?.shield === 'string' ? raw.equipment.shield : null,
+    },
+    placedStructures,
+    stash: normalizeInventory(raw.stash, STASH_CAPACITY).map((s) => (s ? { ...s } : null)),
+    questStates,
+    stats: {
+      craftedCount: Math.max(0, Math.floor(raw.stats?.craftedCount ?? 0)),
+      builtCount: Math.max(0, Math.floor(raw.stats?.builtCount ?? 0)),
+      gatheredCount: Math.max(0, Math.floor(raw.stats?.gatheredCount ?? 0)),
+      defeatedCount: Math.max(0, Math.floor(raw.stats?.defeatedCount ?? 0)),
+    },
+  };
+}
+
+function sanitizeBoolRecord(raw: unknown): Record<string, boolean> {
+  const out: Record<string, boolean> = {};
+  if (!raw || typeof raw !== 'object') return out;
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (v === true && typeof k === 'string') out[k] = true;
+  }
+  return out;
+}
+
+export function createDefaultExplorationSave(): ExplorationSaveData {
+  return {
+    timeOfDay: 13.25,
+    activatedMechanisms: {},
+    openedChests: {},
+    discoveredSecrets: {},
+    unlockedRecipes: {},
+    readLoreIds: {},
+    journalEntries: {},
+    completedLocationEvents: {},
+  };
+}
+
+export function cloneExplorationSave(raw?: ExplorationSaveData): ExplorationSaveData {
+  if (!raw) return createDefaultExplorationSave();
+  const rawTime = typeof raw.timeOfDay === 'number' && Number.isFinite(raw.timeOfDay)
+    ? ((raw.timeOfDay % 24) + 24) % 24
+    : 13.25;
+  return {
+    timeOfDay: rawTime,
+    activatedMechanisms: sanitizeBoolRecord(raw.activatedMechanisms),
+    openedChests: sanitizeBoolRecord(raw.openedChests),
+    discoveredSecrets: sanitizeBoolRecord(raw.discoveredSecrets),
+    unlockedRecipes: sanitizeBoolRecord(raw.unlockedRecipes),
+    readLoreIds: sanitizeBoolRecord(raw.readLoreIds),
+    journalEntries: sanitizeBoolRecord(raw.journalEntries),
+    completedLocationEvents: sanitizeBoolRecord(raw.completedLocationEvents),
+  };
+}
 
 export interface DiscoverableCatalogEntry {
   id: string;
@@ -52,6 +186,8 @@ export function createInitialSaveState(worldSeed = WORLD_SEED): ThornvaleSaveSta
     inventory: createEmptyInventory(),
     resourceStates: {},
     collectedFoundItems: {},
+    gameplay: createDefaultGameplaySave(),
+    exploration: createDefaultExplorationSave(),
   };
 }
 
@@ -76,6 +212,8 @@ export function cloneSaveState(state: ThornvaleSaveState): ThornvaleSaveState {
     inventory: cloneInventorySlots(state.inventory),
     resourceStates: clonedResources,
     collectedFoundItems: state.collectedFoundItems ? { ...state.collectedFoundItems } : {},
+    gameplay: cloneGameplaySave(state.gameplay),
+    exploration: cloneExplorationSave(state.exploration),
   };
 }
 
@@ -119,6 +257,8 @@ export function loadWorldSave(worldSeed = WORLD_SEED): ThornvaleSaveState {
         parsed.collectedFoundItems && typeof parsed.collectedFoundItems === 'object'
           ? parsed.collectedFoundItems
           : {},
+      gameplay: cloneGameplaySave(parsed.gameplay),
+      exploration: cloneExplorationSave(parsed.exploration),
     };
   } catch {
     return createInitialSaveState(worldSeed);

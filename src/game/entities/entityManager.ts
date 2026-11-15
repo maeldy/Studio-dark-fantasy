@@ -96,6 +96,7 @@ export interface SimEntity {
 export interface CombatHitResult {
   hitCount: number;
   killedNames: string[];
+  killedEntities: { species: string; category: string }[];
 }
 
 export interface EntityUpdateContext {
@@ -150,6 +151,7 @@ export class EcosystemManager {
   private interiorLightAnchors: LightAnchor[] = [];
 
   private ambientSoundCooldown = 4.0;
+  private nocturnalIntensity = 0;
   private saveState: ThornvaleSaveState;
   private onSaveStateUpdate: (updater: (prev: ThornvaleSaveState) => ThornvaleSaveState) => void;
 
@@ -174,6 +176,10 @@ export class EcosystemManager {
     this.interiorGroup.name = 'InteriorEcosystem';
     this.interiorGroup.visible = false;
     scene.add(this.interiorGroup);
+  }
+
+  public setNocturnalIntensity(val: number): void {
+    this.nocturnalIntensity = THREE.MathUtils.clamp(val, 0, 1);
   }
 
   public syncSaveState(state: ThornvaleSaveState): void {
@@ -328,6 +334,7 @@ export class EcosystemManager {
     const fwdZ = Math.cos(pYaw);
     let hitCount = 0;
     const killedNames: string[] = [];
+    const killedEntities: { species: string; category: string }[] = [];
 
     for (let i = 0; i < list.length; i++) {
       const e = list[i];
@@ -390,13 +397,14 @@ export class EcosystemManager {
 
         const label = SPECIES_LABELS[e.def.species] ?? e.def.species;
         killedNames.push(label);
+        killedEntities.push({ species: e.def.species, category: e.def.category });
       }
     }
 
     if (hitCount > 0) {
       this.audio.playEcosystemCue('sword_hit');
     }
-    return { hitCount, killedNames };
+    return { hitCount, killedNames, killedEntities };
   }
 
   private spawnEntity(
@@ -570,8 +578,9 @@ export class EcosystemManager {
         e.lightAnchor.x = e.x;
         e.lightAnchor.y = e.y + e.flyHeight + 1.1;
         e.lightAnchor.z = e.z;
+        const nightGlowBoost = ctx.isInterior ? 1 : 1 + this.nocturnalIntensity * 0.45;
         e.lightAnchor.baseIntensity =
-          (e.def.glowIntensity ?? 1.2) * e.opacity;
+          (e.def.glowIntensity ?? 1.2) * e.opacity * nightGlowBoost;
       }
 
       // Smooth fade for ghostly creatures
@@ -1049,7 +1058,8 @@ export class EcosystemManager {
     const heightDiff = Math.abs(ctx.playerY - e.y);
     const distFromHome = Math.hypot(e.x - e.def.x, e.z - e.def.z);
 
-    const aggroR = (e.def.aggroRadius ?? 9.0) * (ctx.lanternOn ? 1.1 : 0.88);
+    const nightDetectMult = ctx.isInterior ? 1 : 1 + this.nocturnalIntensity * 0.16;
+    const aggroR = (e.def.aggroRadius ?? 9.0) * (ctx.lanternOn ? 1.1 : 0.88) * nightDetectMult;
     const leashR = e.def.leashRadius ?? 18.0;
     const moveSpd = e.def.moveSpeed ?? 3.2;
     const attackRange = sp === 'stone_colossus' || sp === 'temple_warden' ? 2.1 : 1.65;
