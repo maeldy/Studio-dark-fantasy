@@ -33,6 +33,8 @@ import {
   PlayerSurvivalState,
   StructureEnvironmentId,
 } from '../types/gameplay';
+import { AudioSettingsState, AudioVolumeChannel } from '../audio/audioSettings';
+import { detectSpatialAudioContext } from '../audio/surfaceDetector';
 import { ForestAudioSystem } from './audio';
 import { DEV_TELEPORT_POINTS } from './devLocations';
 import { buildInteriorById } from './interiors';
@@ -347,6 +349,9 @@ export class ForestExplorerEngine {
   private playerYaw = Math.PI;
   private isGrounded = true;
   private walkCycle = 0;
+  private stepTriggeredThisFrame = false;
+  private crouchToggled = false;
+  private touchCrouch = false;
   private coyoteTimer = 0;
   private jumpBufferTimer = 0;
   private jumpPreLaunchTimer = 0;
@@ -700,6 +705,8 @@ export class ForestExplorerEngine {
 
     if (e.code === 'Space' && !e.repeat) {
       this.triggerJump();
+    } else if (e.code === 'KeyZ' && !e.repeat) {
+      this.crouchToggled = !this.crouchToggled;
     } else if (e.code === 'KeyL') {
       this.toggleLantern();
     } else if (e.code === 'KeyR' && !e.repeat) {
@@ -805,6 +812,18 @@ export class ForestExplorerEngine {
 
   public setTouchSprint(active: boolean): void {
     this.touchSprint = active;
+  }
+
+  public setTouchCrouch(active: boolean): void {
+    this.touchCrouch = active;
+  }
+
+  public isCrouching(): boolean {
+    return (
+      this.crouchToggled ||
+      this.touchCrouch ||
+      !!(this.keys['ControlLeft'] || this.keys['ControlRight'])
+    );
   }
 
   public triggerJump(): void {
@@ -941,11 +960,16 @@ export class ForestExplorerEngine {
   public advanceDialogue(): void {
     if (!this.activeDialogue) return;
     if (this.activeDialogue.lineIndex + 1 < this.activeDialogue.lines.length) {
+      const nextIdx = this.activeDialogue.lineIndex + 1;
       this.activeDialogue = {
         ...this.activeDialogue,
-        lineIndex: this.activeDialogue.lineIndex + 1,
+        lineIndex: nextIdx,
       };
-      this.audio.playEcosystemCue('npc_murmur');
+      this.audio.speakDialogueLine(
+        this.activeDialogue.npcId,
+        this.activeDialogue.role,
+        this.activeDialogue.lines[nextIdx]
+      );
       this.callbacks.onDialogueChange?.({ ...this.activeDialogue });
     } else {
       this.closeDialogue();
@@ -954,6 +978,7 @@ export class ForestExplorerEngine {
 
   public closeDialogue(): void {
     if (!this.activeDialogue) return;
+    this.audio.stopDialogueSpeech();
     this.activeDialogue = null;
     this.callbacks.onDialogueChange?.(null);
     this.updateInteractionPrompt();
@@ -1409,6 +1434,22 @@ export class ForestExplorerEngine {
     const enabled = this.audio.toggle();
     this.callbacks.onAudioStateChange?.(enabled);
     return enabled;
+  }
+
+  public getAudioSettings(): AudioSettingsState {
+    return this.audio.getSettings();
+  }
+
+  public setAudioChannelVolume(channel: AudioVolumeChannel, value: number): AudioSettingsState {
+    return this.audio.setChannelVolume(channel, value);
+  }
+
+  public resetAudioSettings(): AudioSettingsState {
+    return this.audio.resetSettings();
+  }
+
+  public getAudioDebugSnapshot() {
+    return this.audio.getDebugAudioSnapshot();
   }
 
   public setQuality(nextQuality: GraphicsQuality): void {
@@ -1867,6 +1908,7 @@ export class ForestExplorerEngine {
       discoveredIds: nextIds,
     }));
     this.questSystem.syncDiscoveries(nextIds.length, this.updateSaveState);
+    this.audio.playDiscoveryMoment();
     this.callbacks.onDiscovery?.(
       displayName ?? entry.name,
       nextIds.length,
@@ -2217,11 +2259,19 @@ export class ForestExplorerEngine {
     const inputLen = Math.hypot(inputX, inputZ);
     const hasMove = inputLen > 0.05;
 
+    const isCrouching = this.isCrouching();
     const keyboardRun = !!(this.keys['ShiftLeft'] || this.keys['ShiftRight']);
     const touchRun = this.touchSprint || this.touchMove.magnitude > 0.72;
-    const isRunning = hasMove && this.survivalSystem.canSprint() && (keyboardRun || touchRun);
+    const isRunning =
+      !isCrouching && hasMove && this.survivalSystem.canSprint() && (keyboardRun || touchRun);
 
-    const maxSpeed = isRunning ? (this.activeInterior ? 5.2 : 6.4) : 3.45;
+    const maxSpeed = isCrouching
+      ? 2.05
+      : isRunning
+        ? this.activeInterior
+          ? 5.2
+          : 6.4
+        : 3.45;
     const moveScale = hasMove ? Math.min(1, inputLen) : 0;
 
     if (hasMove) {
@@ -2282,6 +2332,16 @@ export class ForestExplorerEngine {
       this.jumpBufferTimer = 0;
       this.jumpPreLaunchTimer = 0.08;
       this.landSquashTimer = 0;
+      const jumpSpatial = detectSpatialAudioContext({
+        x: this.playerPos.x,
+        y: this.playerPos.y,
+        z: this.playerPos.z,
+        isInterior: !!this.activeInterior,
+        interiorId: this.activeInterior ? this.activeInterior.id : null,
+        interiorAtmosphere: this.activeInterior ? this.activeInterior.lighting.atmosphere : 'forest',
+        nearFire: false,
+      });
+      this.audio.playJumpCue(jumpSpatial.surface);
     }
 
     if (!this.isGrounded) {
@@ -2454,6 +2514,16 @@ export class ForestExplorerEngine {
     if (this.playerPos.y <= groundY) {
       if (!wasGrounded && preSnapVelY < -2.4) {
         this.landSquashTimer = 0.22;
+        const landSpatial = detectSpatialAudioContext({
+          x: this.playerPos.x,
+          y: groundY,
+          z: this.playerPos.z,
+          isInterior: !!this.activeInterior,
+          interiorId: this.activeInterior ? this.activeInterior.id : null,
+          interiorAtmosphere: this.activeInterior ? this.activeInterior.lighting.atmosphere : 'forest',
+          nearFire: false,
+        });
+        this.audio.playLandCue(landSpatial.surface, preSnapVelY);
       }
       this.playerPos.y = groundY;
       this.playerVel.y = 0;
@@ -2578,6 +2648,7 @@ export class ForestExplorerEngine {
       playerZ: this.playerPos.z,
       playerYaw: this.playerYaw,
       playerSpeed: horizSpeed,
+      playerCrouching: isCrouching,
       lanternOn: this.lanternEnabled,
       isInterior: !!this.activeInterior,
       colliders: this.ecosystemCirclesBuf,
@@ -2702,13 +2773,36 @@ export class ForestExplorerEngine {
       this.playerRig.lanternLight.intensity = baseInt * lanternFlicker;
     }
 
-    // 13. Zone Discovery, Interaction Prompt & Audio Update
+    // 13. Zone Discovery, Interaction Prompt & Central Audio Update
     this.updateActiveZone();
     this.updateInteractionPrompt();
-    const onPath = this.activeInterior
-      ? true
-      : pathMaskAt(this.playerPos.x, this.playerPos.z) > 0.45;
-    this.audio.update(elapsed, dt, horizSpeed, this.isGrounded, onPath);
+    const spatial = detectSpatialAudioContext({
+      x: this.playerPos.x,
+      y: this.playerPos.y,
+      z: this.playerPos.z,
+      isInterior: !!this.activeInterior,
+      interiorId: this.activeInterior ? this.activeInterior.id : null,
+      interiorAtmosphere: this.activeInterior
+        ? this.activeInterior.lighting.atmosphere
+        : 'forest',
+      nearFire: warmthEnv.nearFire,
+    });
+    const inCombatNow =
+      this.combatCooldownTimer > 0 || this.ecosystem.isActiveCombatNearby(!!this.activeInterior);
+    const gait = isCrouching ? 'crouch' : isRunning ? 'run' : 'walk';
+    this.audio.updateFrame({
+      elapsed,
+      dt,
+      speed: horizSpeed,
+      isGrounded: this.isGrounded,
+      gait,
+      isCrouching,
+      inCombat: inCombatNow,
+      isNight: currentAtm.isDuskOrNight,
+      nocturnalIntensity: currentAtm.nocturnalIntensity,
+      spatial,
+      stepTriggered: this.stepTriggeredThisFrame,
+    });
   }
 
   private handlePlayerFallen(): void {
@@ -2801,12 +2895,18 @@ export class ForestExplorerEngine {
 
   private animateCharacter(dt: number, elapsed: number, speed: number, isRunning: boolean): void {
     const rig = this.playerRig;
+    const isCrouching = this.isCrouching();
     const moveBlend = THREE.MathUtils.clamp(speed / 3.4, 0, 1);
     const runBlend = isRunning ? THREE.MathUtils.clamp((speed - 3.0) / 2.8, 0, 1) : 0;
 
-    if (speed > 0.2 && this.isGrounded) {
-      const freq = THREE.MathUtils.lerp(7.2, 11.2, runBlend);
+    this.stepTriggeredThisFrame = false;
+    if (speed > 0.32 && this.isGrounded) {
+      const prevStepBucket = Math.floor((this.walkCycle + Math.PI * 0.5) / Math.PI);
+      const freq = isCrouching ? 5.2 : THREE.MathUtils.lerp(7.2, 11.2, runBlend);
       this.walkCycle += dt * freq;
+      if (Math.floor((this.walkCycle + Math.PI * 0.5) / Math.PI) !== prevStepBucket) {
+        this.stepTriggeredThisFrame = true;
+      }
     } else if (this.isGrounded) {
       this.walkCycle = THREE.MathUtils.damp(
         this.walkCycle,
@@ -2884,10 +2984,11 @@ export class ForestExplorerEngine {
           ? Math.sin((1 - this.landSquashTimer / 0.22) * Math.PI)
           : 0;
 
-      const targetLeftHip = legSwing - squashWave * 0.28;
-      const targetRightHip = -legSwing - squashWave * 0.28;
-      const targetLeftKnee = leftKneeSwing + squashWave * 0.56 + 0.04 * (1 - moveBlend);
-      const targetRightKnee = rightKneeSwing + squashWave * 0.56 + 0.04 * (1 - moveBlend);
+      const crouchDrop = isCrouching ? 0.19 : 0;
+      const targetLeftHip = legSwing - squashWave * 0.28 - (isCrouching ? 0.34 : 0);
+      const targetRightHip = -legSwing - squashWave * 0.28 - (isCrouching ? 0.34 : 0);
+      const targetLeftKnee = leftKneeSwing + squashWave * 0.56 + 0.04 * (1 - moveBlend) + (isCrouching ? 0.56 : 0);
+      const targetRightKnee = rightKneeSwing + squashWave * 0.56 + 0.04 * (1 - moveBlend) + (isCrouching ? 0.56 : 0);
 
       rig.leftLegPivot.rotation.x = THREE.MathUtils.damp(rig.leftLegPivot.rotation.x, targetLeftHip, 15, dt);
       rig.rightLegPivot.rotation.x = THREE.MathUtils.damp(rig.rightLegPivot.rotation.x, targetRightHip, 15, dt);
@@ -2924,6 +3025,7 @@ export class ForestExplorerEngine {
 
       const lean =
         THREE.MathUtils.lerp(0.08, 0.22, runBlend) * moveBlend +
+        (isCrouching ? 0.24 : 0) +
         squashWave * 0.16 +
         Math.sin(elapsed * 2.05) * 0.014 * (1 - moveBlend);
       rig.torso.rotation.x = THREE.MathUtils.damp(rig.torso.rotation.x, lean, 12, dt);
@@ -2949,7 +3051,7 @@ export class ForestExplorerEngine {
 
       rig.bodyPivot.position.y = THREE.MathUtils.damp(
         rig.bodyPivot.position.y,
-        strideBob + idleBreath - squashWave * 0.11,
+        strideBob + idleBreath - squashWave * 0.11 - crouchDrop,
         18,
         dt
       );

@@ -5,6 +5,7 @@ interface TouchControlsProps {
   onMove: (input: TouchMoveInput) => void;
   onJump: () => void;
   onSprintChange: (sprinting: boolean) => void;
+  onCrouchChange?: (crouching: boolean) => void;
   onAttack?: () => void;
   interactPrompt?: InteractPrompt | null;
   onInteract?: () => void;
@@ -16,6 +17,7 @@ export const TouchControls: React.FC<TouchControlsProps> = ({
   onMove,
   onJump,
   onSprintChange,
+  onCrouchChange,
   onAttack,
   interactPrompt,
   onInteract,
@@ -23,6 +25,7 @@ export const TouchControls: React.FC<TouchControlsProps> = ({
   const [knobOffset, setKnobOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [stickActive, setStickActive] = useState(false);
   const [sprintLocked, setSprintLocked] = useState(false);
+  const [crouchLocked, setCrouchLocked] = useState(false);
 
   const stickTouchId = useRef<number | null>(null);
   const stickCenter = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -118,6 +121,20 @@ export const TouchControls: React.FC<TouchControlsProps> = ({
     const next = !sprintLocked;
     setSprintLocked(next);
     onSprintChange(next);
+    if (next && crouchLocked) {
+      setCrouchLocked(false);
+      onCrouchChange?.(false);
+    }
+  };
+
+  const toggleCrouchLock = () => {
+    const next = !crouchLocked;
+    setCrouchLocked(next);
+    onCrouchChange?.(next);
+    if (next && sprintLocked) {
+      setSprintLocked(false);
+      onSprintChange(false);
+    }
   };
 
   return (
@@ -188,6 +205,24 @@ export const TouchControls: React.FC<TouchControlsProps> = ({
               className="flex h-12 min-w-14 items-center justify-center rounded-xl border border-[#c96a52]/55 bg-[#2e1c1a]/90 px-3 text-xs font-medium tracking-wide text-[#f0d8cf] active:bg-[#472926] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#e0a65c]"
             >
               Strike
+            </button>
+          )}
+
+          {onCrouchChange && (
+            <button
+              type="button"
+              onTouchStart={(e) => {
+                e.stopPropagation();
+              }}
+              onClick={toggleCrouchLock}
+              aria-pressed={crouchLocked}
+              className={`flex h-12 min-w-12 items-center justify-center rounded-xl border px-3 text-xs font-medium tracking-wide transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#e0a65c] ${
+                crouchLocked
+                  ? 'border-[#7fb8c9]/70 bg-[#1a2f36]/90 text-[#cbeaf2]'
+                  : 'border-white/15 bg-[#161c22]/85 text-[#d7d2c6]'
+              }`}
+            >
+              Sneak
             </button>
           )}
 

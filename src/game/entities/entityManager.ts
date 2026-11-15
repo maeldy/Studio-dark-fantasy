@@ -107,6 +107,7 @@ export interface EntityUpdateContext {
   playerZ: number;
   playerYaw: number;
   playerSpeed: number;
+  playerCrouching?: boolean;
   lanternOn: boolean;
   isInterior: boolean;
   colliders: CircleCollider[];
@@ -246,6 +247,27 @@ export class EcosystemManager {
     return isInterior ? this.interiorEntities : this.overworldEntities;
   }
 
+  public isActiveCombatNearby(isInterior: boolean): boolean {
+    const list = isInterior ? this.interiorEntities : this.overworldEntities;
+    for (let i = 0; i < list.length; i++) {
+      const e = list[i];
+      if (!e.alive) continue;
+      if (
+        e.def.category === 'monster' &&
+        (e.monsterState === 'alert' || e.monsterState === 'chase' || e.monsterState === 'attack')
+      ) {
+        return true;
+      }
+      if (
+        e.def.category === 'creature' &&
+        (e.creatureState === 'alert' || e.creatureState === 'chase' || e.creatureState === 'attack')
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   public findNearestInteractableNpc(
     isInterior: boolean,
     px: number,
@@ -309,7 +331,9 @@ export class EcosystemManager {
       }));
     }
 
-    this.audio.playEcosystemCue('npc_murmur');
+    if (lines.length > 0) {
+      this.audio.speakDialogueLine(npcId, role, lines[0]);
+    }
 
     return {
       npcId,
@@ -624,8 +648,9 @@ export class EcosystemManager {
     const dxP = e.x - ctx.playerX;
     const dzP = e.z - ctx.playerZ;
     const distP = Math.hypot(dxP, dzP);
+    const stealthMult = ctx.playerCrouching ? 0.62 : 1.0;
     const playerThreatDist =
-      sp === 'rabbit' || sp === 'mouse'
+      (sp === 'rabbit' || sp === 'mouse'
         ? 7.5
         : isBird
           ? 7.0
@@ -635,7 +660,7 @@ export class EcosystemManager {
               ? 6.0
               : ctx.playerSpeed > 4.2
                 ? 11.5
-                : 7.5;
+                : 7.5) * stealthMult;
 
     // Inter-entity danger detection (predators, monsters, large animals scaring birds)
     let dangerX = 0;
@@ -693,6 +718,11 @@ export class EcosystemManager {
         e.y = walkableHeightAt(e.x, e.z);
         e.flyHeight = 6.4 + Math.sin(ctx.elapsed * 0.8 + e.phase) * 1.1;
         e.yaw = Math.atan2(e.vx, e.vz);
+        if (e.soundCooldown <= 0 && distP < 28 && this.ambientSoundCooldown <= 0) {
+          this.audio.playEcosystemCue('eagle', distP);
+          e.soundCooldown = 12 + Math.random() * 12;
+          this.ambientSoundCooldown = 4.0;
+        }
         return;
       }
 
@@ -706,7 +736,8 @@ export class EcosystemManager {
         e.targetZ = e.z + (awayZ / len) * 14;
         if (this.ambientSoundCooldown <= 0 && distP < 18) {
           this.audio.playEcosystemCue(
-            sp === 'owl' || sp === 'barn_owl' ? 'owl' : sp === 'songbird' ? 'songbird' : 'crow'
+            sp === 'owl' || sp === 'barn_owl' ? 'owl' : sp === 'songbird' ? 'songbird' : 'crow',
+            distP
           );
           this.ambientSoundCooldown = 4.5;
         }
@@ -760,12 +791,20 @@ export class EcosystemManager {
           e.vz = 0;
         }
       }
-      if (e.soundCooldown <= 0 && distP < 22 && this.ambientSoundCooldown <= 0) {
-        this.audio.playEcosystemCue(
-          sp === 'owl' || sp === 'barn_owl' ? 'owl' : sp === 'songbird' ? 'songbird' : 'crow'
-        );
-        e.soundCooldown = 8 + Math.random() * 10;
-        this.ambientSoundCooldown = 3.5;
+      if (e.soundCooldown <= 0 && distP < 24 && this.ambientSoundCooldown <= 0) {
+        const isOwl = sp === 'owl' || sp === 'barn_owl';
+        const allowCall =
+          (isOwl && this.nocturnalIntensity > 0.25) ||
+          (sp === 'songbird' && this.nocturnalIntensity < 0.7) ||
+          (!isOwl && sp !== 'songbird');
+        if (allowCall) {
+          this.audio.playEcosystemCue(
+            isOwl ? 'owl' : sp === 'songbird' ? 'songbird' : 'crow',
+            distP
+          );
+          e.soundCooldown = 8 + Math.random() * 10;
+          this.ambientSoundCooldown = 3.5;
+        }
       }
       return;
     }
@@ -775,7 +814,7 @@ export class EcosystemManager {
       e.animalState = 'threaten';
       e.stateTimer = 4.0;
       if (this.ambientSoundCooldown <= 0) {
-        this.audio.playEcosystemCue('wolf_growl');
+        this.audio.playEcosystemCue(sp === 'bear' ? 'bear_roar' : 'boar_snort', distP);
         this.ambientSoundCooldown = 3.0;
       }
     }
@@ -800,7 +839,7 @@ export class EcosystemManager {
     // Fleeing from Player or Predator/Monster
     if (dangerDist < playerThreatDist && sp !== 'bear') {
       if (e.animalState !== 'flee' && distP < 16 && this.ambientSoundCooldown <= 0) {
-        this.audio.playEcosystemCue('rustle');
+        this.audio.playEcosystemCue('rustle', distP);
         this.ambientSoundCooldown = 2.2;
       }
       e.animalState = 'flee';
@@ -830,8 +869,13 @@ export class EcosystemManager {
       return;
     }
 
-    // Wolf hunting nearby prey if no danger
+    // Wolf hunting nearby prey if no danger + occasional wolf growl
     if (sp === 'wolf' && preyTarget && preyDist < 12.0) {
+      if (e.soundCooldown <= 0 && distP < 20 && this.ambientSoundCooldown <= 0) {
+        this.audio.playEcosystemCue('wolf_growl', distP);
+        e.soundCooldown = 9 + Math.random() * 8;
+        this.ambientSoundCooldown = 3.5;
+      }
       this.steerToward(e, preyTarget.x, preyTarget.z, 3.8, ctx, dt);
       return;
     }
@@ -994,7 +1038,7 @@ export class EcosystemManager {
         e.creatureState = 'vanish';
         e.stateTimer = 8.0 + Math.random() * 5.0;
         if (this.ambientSoundCooldown <= 0) {
-          this.audio.playEcosystemCue('spirit_chime');
+          this.audio.playEcosystemCue('spirit_chime', dist);
           this.ambientSoundCooldown = 5.0;
         }
         return;
@@ -1059,10 +1103,29 @@ export class EcosystemManager {
     const distFromHome = Math.hypot(e.x - e.def.x, e.z - e.def.z);
 
     const nightDetectMult = ctx.isInterior ? 1 : 1 + this.nocturnalIntensity * 0.16;
-    const aggroR = (e.def.aggroRadius ?? 9.0) * (ctx.lanternOn ? 1.1 : 0.88) * nightDetectMult;
+    const stealthMult = ctx.playerCrouching ? 0.64 : 1.0;
+    const aggroR =
+      (e.def.aggroRadius ?? 9.0) * (ctx.lanternOn ? 1.1 : 0.88) * nightDetectMult * stealthMult;
     const leashR = e.def.leashRadius ?? 18.0;
     const moveSpd = e.def.moveSpeed ?? 3.2;
     const attackRange = sp === 'stone_colossus' || sp === 'temple_warden' ? 2.1 : 1.65;
+
+    // Periodic ambient monster vocalization / heavy breathing when patrolling or chasing nearby
+    if (e.soundCooldown <= 0 && dist < 20 && this.ambientSoundCooldown <= 0) {
+      const spCue =
+        sp === 'giant_spider' || sp === 'cave_crawler'
+          ? 'spider_chitter'
+          : sp === 'animated_skeleton' || sp === 'hollow_husk'
+            ? 'skeleton_rattle'
+            : sp === 'ruin_wraith'
+              ? 'wraith_wail'
+              : sp === 'stone_colossus' || sp === 'temple_warden'
+                ? 'colossus_breath'
+                : 'wolf_growl';
+      this.audio.playEcosystemCue(spCue, dist);
+      e.soundCooldown = 7 + Math.random() * 8;
+      this.ambientSoundCooldown = 3.2;
+    }
 
     const canSeePlayer =
       dist <= aggroR &&
@@ -1117,7 +1180,17 @@ export class EcosystemManager {
           e.monsterState = 'alert';
           e.stateTimer = 0.45;
           e.blockedTimer = 0;
-          this.audio.playEcosystemCue(sp === 'dire_wolf' ? 'wolf_growl' : 'monster_alert');
+          const alertCue =
+            sp === 'dire_wolf'
+              ? 'wolf_growl'
+              : sp === 'giant_spider' || sp === 'cave_crawler'
+                ? 'spider_chitter'
+                : sp === 'animated_skeleton'
+                  ? 'skeleton_rattle'
+                  : sp === 'ruin_wraith'
+                    ? 'wraith_wail'
+                    : 'monster_alert';
+          this.audio.playEcosystemCue(alertCue, dist);
           // Pack alert for dire wolves
           if (e.def.herdId) {
             for (let i = 0; i < all.length; i++) {

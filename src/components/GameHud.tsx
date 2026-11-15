@@ -28,6 +28,11 @@ import {
   Wrench,
   X,
 } from 'lucide-react';
+import {
+  AUDIO_CHANNEL_LABELS,
+  AudioSettingsState,
+  AudioVolumeChannel,
+} from '../audio/audioSettings';
 import { DYNAMIC_EVENT_TEMPLATES } from '../data/exploration';
 import { DEV_TELEPORT_CATEGORIES } from '../game/devLocations';
 import { countUsedInventorySlots, INVENTORY_CAPACITY } from '../game/inventory';
@@ -101,6 +106,9 @@ interface GameHudProps {
   onSetDevMechanisms?: (open: boolean) => void;
   onRevealDevJournal?: () => void;
   onSpawnDevChest?: () => void;
+  audioSettings?: AudioSettingsState;
+  onChangeAudioVolume?: (channel: AudioVolumeChannel, value: number) => void;
+  onResetAudioSettings?: () => void;
 }
 
 const QUALITY_LABELS: Record<GraphicsQuality, string> = {
@@ -157,6 +165,9 @@ export const GameHud: React.FC<GameHudProps> = ({
   onSetDevMechanisms,
   onRevealDevJournal,
   onSpawnDevChest,
+  audioSettings,
+  onChangeAudioVolume,
+  onResetAudioSettings,
 }) => {
   const [dockCollapsed, setDockCollapsed] = useState(() =>
     typeof window !== 'undefined' ? window.innerWidth < 768 : false
@@ -829,17 +840,17 @@ export const GameHud: React.FC<GameHudProps> = ({
         </div>
       )}
 
-      {/* Settings / Developer Mode Popover */}
+      {/* Settings / Audio Mixer / Developer Mode Popover */}
       {showSettings && (
         <div
           role="dialog"
           aria-label="Settings"
           onMouseDown={stopCanvasPropagation}
           onTouchStart={stopCanvasPropagation}
-          className="pointer-events-auto fixed bottom-48 sm:bottom-20 left-1/2 z-30 w-[min(92vw,380px)] -translate-x-1/2 rounded-xl border border-white/12 bg-[#141a20]/96 px-4 py-3 text-xs text-[#d2cdc2] shadow-xl"
+          className="pointer-events-auto fixed bottom-48 sm:bottom-20 left-1/2 z-30 max-h-[68vh] w-[min(92vw,400px)] -translate-x-1/2 overflow-y-auto rounded-xl border border-white/12 bg-[#141a20]/96 px-4 py-3 text-xs text-[#d2cdc2] shadow-xl"
         >
           <div className="mb-2.5 flex items-center justify-between border-b border-white/10 pb-1.5">
-            <span className="font-medium text-[#e8e2d5]">Settings & Tools</span>
+            <span className="font-medium text-[#e8e2d5]">Settings &amp; Audio</span>
             <button
               type="button"
               onClick={() => setShowSettings(false)}
@@ -849,12 +860,82 @@ export const GameHud: React.FC<GameHudProps> = ({
             </button>
           </div>
 
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-2.5">
+            {/* 7-Channel Audio Mixer */}
+            {audioSettings && onChangeAudioVolume && (
+              <div className="rounded-lg border border-white/10 bg-[#182027] px-3 py-2.5">
+                <div className="mb-2 flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <Volume2 className="h-3.5 w-3.5 text-[#e0a65c]" />
+                    <span className="font-medium text-[#ece4d6]">Audio Mixer</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={onToggleAudio}
+                      className={`rounded border px-2 py-0.5 font-mono text-[10px] ${
+                        audioEnabled
+                          ? 'border-[#e0a65c]/65 bg-[#2d2317] text-[#f2c883]'
+                          : 'border-white/15 bg-[#13191e] text-[#98a4ae]'
+                      }`}
+                    >
+                      {audioEnabled ? 'AUDIO ON' : 'MUTED'}
+                    </button>
+                    {onResetAudioSettings && (
+                      <button
+                        type="button"
+                        onClick={onResetAudioSettings}
+                        className="rounded border border-white/10 bg-[#13191e] px-2 py-0.5 text-[10px] text-[#9ca7b0] hover:text-[#e8e2d5]"
+                      >
+                        Reset
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  {(
+                    [
+                      'master',
+                      'music',
+                      'ambience',
+                      'sfx',
+                      'creatures',
+                      'dialogue',
+                      'weather',
+                    ] as AudioVolumeChannel[]
+                  ).map((ch) => {
+                    const pct = Math.round((audioSettings[ch] ?? 0) * 100);
+                    return (
+                      <label key={ch} className="flex items-center justify-between gap-2 text-[11px]">
+                        <span className="w-32 shrink-0 text-[#c5ccd3]">
+                          {AUDIO_CHANNEL_LABELS[ch]}
+                        </span>
+                        <input
+                          type="range"
+                          min={0}
+                          max={100}
+                          step={1}
+                          value={pct}
+                          onChange={(e) =>
+                            onChangeAudioVolume(ch, Number(e.target.value) / 100)
+                          }
+                          className="h-1.5 flex-1 cursor-pointer accent-[#e0a65c]"
+                        />
+                        <span className="w-8 text-right font-mono text-[10px] text-[#e0a65c]">
+                          {pct}%
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             <div className="flex min-h-[44px] items-center justify-between rounded-lg border border-white/10 bg-[#1a2229] px-3 py-2">
               <div>
                 <div className="font-medium text-[#ece4d6]">Developer Mode</div>
                 <div className="text-[10px] text-[#8d98a3]">
-                  Isolated teleport & inspection sandbox
+                  Isolated teleport &amp; inspection sandbox
                 </div>
               </div>
               <button
@@ -1003,6 +1084,9 @@ export const GameHud: React.FC<GameHudProps> = ({
             </div>
             <div>
               <span className="text-[#e0a65c]">Run</span> — Hold Shift
+            </div>
+            <div>
+              <span className="text-[#e0a65c]">Sneak / Stealth</span> — Z / Ctrl
             </div>
             <div>
               <span className="text-[#e0a65c]">Orbit Camera</span> — Drag / Q, E

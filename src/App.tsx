@@ -1,4 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  AudioSettingsState,
+  AudioVolumeChannel,
+  loadAudioSettings,
+} from './audio/audioSettings';
 import { GameHud } from './components/GameHud';
 import { GameplayHud, WorkshopTab } from './components/GameplayHud';
 import { TouchControls } from './components/TouchControls';
@@ -43,6 +48,9 @@ export default function App() {
 
   const [zoneName, setZoneName] = useState('The Moss Clearing');
   const [audioEnabled, setAudioEnabled] = useState(false);
+  const [audioSettings, setAudioSettings] = useState<AudioSettingsState>(() =>
+    loadAudioSettings()
+  );
   const [lanternEnabled, setLanternEnabled] = useState(true);
   const [touchEnabled, setTouchEnabled] = useState(() => isTouchDevice());
   const [quality, setQuality] = useState<GraphicsQuality>(() =>
@@ -167,6 +175,21 @@ export default function App() {
     setAudioEnabled(next);
   }, []);
 
+  const handleChangeAudioVolume = useCallback(
+    (channel: AudioVolumeChannel, value: number) => {
+      if (!engineRef.current) return;
+      const next = engineRef.current.setAudioChannelVolume(channel, value);
+      setAudioSettings(next);
+    },
+    []
+  );
+
+  const handleResetAudioSettings = useCallback(() => {
+    if (!engineRef.current) return;
+    const next = engineRef.current.resetAudioSettings();
+    setAudioSettings(next);
+  }, []);
+
   const handleToggleLantern = useCallback(() => {
     if (!engineRef.current) return;
     const next = engineRef.current.toggleLantern();
@@ -237,6 +260,10 @@ export default function App() {
 
   const handleTouchSprint = useCallback((active: boolean) => {
     engineRef.current?.setTouchSprint(active);
+  }, []);
+
+  const handleTouchCrouch = useCallback((active: boolean) => {
+    engineRef.current?.setTouchCrouch(active);
   }, []);
 
   const handleMoveInventorySlot = useCallback((fromIdx: number, toIdx: number) => {
@@ -399,6 +426,7 @@ export default function App() {
           onMove={handleTouchMove}
           onJump={handleTouchJump}
           onSprintChange={handleTouchSprint}
+          onCrouchChange={handleTouchCrouch}
           onAttack={handleAttack}
           interactPrompt={dialogue ? null : interactPrompt}
           onInteract={handleInteract}
@@ -453,6 +481,9 @@ export default function App() {
         onSetDevMechanisms={handleSetDevMechanisms}
         onRevealDevJournal={handleRevealDevJournal}
         onSpawnDevChest={handleSpawnDevChest}
+        audioSettings={audioSettings}
+        onChangeAudioVolume={handleChangeAudioVolume}
+        onResetAudioSettings={handleResetAudioSettings}
       />
 
       <GameplayHud
