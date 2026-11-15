@@ -93,6 +93,42 @@ import {
 } from './types';
 import { buildForestWorld, WorldBuildResult } from './world';
 
+/**
+ * Centralized locomotion profile for Thornvale.
+ * Strictly preserved values ensuring slow, contemplative medieval exploration pace,
+ * smooth physical inertia, and exact stride-to-speed cadence.
+ */
+export const THORNVALE_LOCOMOTION = {
+  // Speeds in m/s (strictly preserved from Phase 1.1)
+  WALK_SPEED_OVERWORLD: 1.85,
+  WALK_SPEED_INTERIOR: 1.55,
+  RUN_SPEED_OVERWORLD: 4.1,
+  RUN_SPEED_INTERIOR: 3.2,
+  CROUCH_SPEED_OVERWORLD: 1.15,
+  CROUCH_SPEED_INTERIOR: 1.05,
+
+  // Organic acceleration and deceleration (physical inertia)
+  ACCEL_WALK_GROUNDED: 5.4,
+  ACCEL_RUN_GROUNDED: 6.5,
+  ACCEL_AIRBORNE: 3.0,
+  DECEL_GROUNDED: 7.2,
+  DECEL_AIRBORNE: 1.8,
+
+  // Turning rates (rad/s)
+  TURN_RATE_WALK: 7.8,
+  TURN_RATE_RUN: 9.2,
+  TURN_RATE_AIRBORNE: 4.8,
+  TURN_ANGULAR_DAMP: 8.5,
+
+  // Stride lengths (meters per half-cycle PI)
+  STRIDE_WALK: 0.72,
+  STRIDE_RUN: 1.12,
+  STRIDE_CROUCH: 0.52,
+
+  // Downward terrain slope magnetic snap (meters)
+  DOWNHILL_SNAP_LIMIT: 0.42,
+} as const;
+
 class SpatialColliderIndex {
   private readonly cellSize = 8;
   private circleCells = new Map<number, CircleCollider[]>();
@@ -2258,20 +2294,29 @@ export class ForestExplorerEngine {
 
     const inputLen = Math.hypot(inputX, inputZ);
     const hasMove = inputLen > 0.05;
-
     const isCrouching = this.isCrouching();
     const keyboardRun = !!(this.keys['ShiftLeft'] || this.keys['ShiftRight']);
-    const touchRun = this.touchSprint || this.touchMove.magnitude > 0.72;
+    // Sprint only activates when explicitly requested (keyboard Shift or mobile Run button)
+    const touchRun = this.touchSprint;
     const isRunning =
       !isCrouching && hasMove && this.survivalSystem.canSprint() && (keyboardRun || touchRun);
 
+    // Medieval contemplative exploration speeds (centralized in THORNVALE_LOCOMOTION)
+    const maxWalkSpeed = this.activeInterior
+      ? THORNVALE_LOCOMOTION.WALK_SPEED_INTERIOR
+      : THORNVALE_LOCOMOTION.WALK_SPEED_OVERWORLD;
+    const maxRunSpeed = this.activeInterior
+      ? THORNVALE_LOCOMOTION.RUN_SPEED_INTERIOR
+      : THORNVALE_LOCOMOTION.RUN_SPEED_OVERWORLD;
+    const maxCrouchSpeed = this.activeInterior
+      ? THORNVALE_LOCOMOTION.CROUCH_SPEED_INTERIOR
+      : THORNVALE_LOCOMOTION.CROUCH_SPEED_OVERWORLD;
+
     const maxSpeed = isCrouching
-      ? 2.05
+      ? maxCrouchSpeed
       : isRunning
-        ? this.activeInterior
-          ? 5.2
-          : 6.4
-        : 3.45;
+        ? maxRunSpeed
+        : maxWalkSpeed;
     const moveScale = hasMove ? Math.min(1, inputLen) : 0;
 
     if (hasMove) {
@@ -2287,28 +2332,50 @@ export class ForestExplorerEngine {
         .addScaledVector(_camRight, nx)
         .normalize();
 
-      const targetVx = _moveDir.x * maxSpeed * moveScale;
-      const targetVz = _moveDir.z * maxSpeed * moveScale;
-
-      const accel = this.isGrounded ? 10.5 : 4.2;
-      this.playerVel.x = THREE.MathUtils.damp(this.playerVel.x, targetVx, accel, dt);
-      this.playerVel.z = THREE.MathUtils.damp(this.playerVel.z, targetVz, accel, dt);
-
       const desiredYaw = Math.atan2(_moveDir.x, _moveDir.z);
       const yawDiff = shortestAngleDiff(this.playerYaw, desiredYaw);
-      const yawStep = yawDiff * (1 - Math.exp(-12 * dt));
+
+      // Smooth, natural turn rate with speed-adaptive body banking
+      const turnRate = this.isGrounded
+        ? isRunning
+          ? THORNVALE_LOCOMOTION.TURN_RATE_RUN
+          : THORNVALE_LOCOMOTION.TURN_RATE_WALK
+        : THORNVALE_LOCOMOTION.TURN_RATE_AIRBORNE;
+      const yawStep = yawDiff * (1 - Math.exp(-turnRate * dt));
       this.playerYaw += yawStep;
       this.turnAngularVel = THREE.MathUtils.damp(
         this.turnAngularVel,
-        THREE.MathUtils.clamp(yawDiff, -1.6, 1.6),
-        10,
+        THREE.MathUtils.clamp(yawDiff, -1.8, 1.8),
+        THORNVALE_LOCOMOTION.TURN_ANGULAR_DAMP,
         dt
       );
+
+      // Soften forward impulse slightly during sharp turns to prevent unrealistic sideways skidding
+      const turnTurnFactor = Math.cos(THREE.MathUtils.clamp(yawDiff * 0.45, -1.2, 1.2));
+      const targetVx = _moveDir.x * maxSpeed * moveScale * Math.max(0.75, turnTurnFactor);
+      const targetVz = _moveDir.z * maxSpeed * moveScale * Math.max(0.75, turnTurnFactor);
+
+      // Progressive acceleration with physical inertia (human weight and travel gear)
+      const accel = this.isGrounded
+        ? isRunning
+          ? THORNVALE_LOCOMOTION.ACCEL_RUN_GROUNDED
+          : THORNVALE_LOCOMOTION.ACCEL_WALK_GROUNDED
+        : THORNVALE_LOCOMOTION.ACCEL_AIRBORNE;
+      this.playerVel.x = THREE.MathUtils.damp(this.playerVel.x, targetVx, accel, dt);
+      this.playerVel.z = THREE.MathUtils.damp(this.playerVel.z, targetVz, accel, dt);
     } else {
-      const decel = this.isGrounded ? 12.0 : 2.5;
+      // Natural deceleration to stop without abrupt freeze
+      const decel = this.isGrounded
+        ? THORNVALE_LOCOMOTION.DECEL_GROUNDED
+        : THORNVALE_LOCOMOTION.DECEL_AIRBORNE;
       this.playerVel.x = THREE.MathUtils.damp(this.playerVel.x, 0, decel, dt);
       this.playerVel.z = THREE.MathUtils.damp(this.playerVel.z, 0, decel, dt);
-      this.turnAngularVel = THREE.MathUtils.damp(this.turnAngularVel, 0, 10, dt);
+      this.turnAngularVel = THREE.MathUtils.damp(
+        this.turnAngularVel,
+        0,
+        THORNVALE_LOCOMOTION.TURN_ANGULAR_DAMP,
+        dt
+      );
     }
 
     // 4. Coyote time, jump buffering & crisp gravity
@@ -2496,6 +2563,18 @@ export class ForestExplorerEngine {
       nextZ *= s;
     }
 
+    // Slide smoothly along obstacle tangents instead of snagging against surfaces
+    if (dt > 0.0001) {
+      const actualDx = nextX - prevX;
+      const actualDz = nextZ - prevZ;
+      const intendedDx = this.playerVel.x * dt;
+      const intendedDz = this.playerVel.z * dt;
+      if (Math.hypot(actualDx - intendedDx, actualDz - intendedDz) > 0.002) {
+        this.playerVel.x = THREE.MathUtils.damp(this.playerVel.x, actualDx / dt, 14, dt);
+        this.playerVel.z = THREE.MathUtils.damp(this.playerVel.z, actualDz / dt, 14, dt);
+      }
+    }
+
     this.playerPos.x = nextX;
     this.playerPos.z = nextZ;
 
@@ -2528,7 +2607,14 @@ export class ForestExplorerEngine {
       this.playerPos.y = groundY;
       this.playerVel.y = 0;
       this.isGrounded = true;
-    } else if (wasGrounded && this.playerPos.y - groundY < 0.34) {
+    } else if (
+      wasGrounded &&
+      !this.keys['Space'] &&
+      this.jumpBufferTimer <= 0 &&
+      this.playerPos.y - groundY < THORNVALE_LOCOMOTION.DOWNHILL_SNAP_LIMIT &&
+      this.playerVel.y <= 0.05
+    ) {
+      // Smooth downward ground clamping for slopes, path ridges and stairs
       this.playerPos.y = groundY;
       this.playerVel.y = 0;
     } else if (this.playerPos.y > groundY + 0.08) {
@@ -2896,13 +2982,24 @@ export class ForestExplorerEngine {
   private animateCharacter(dt: number, elapsed: number, speed: number, isRunning: boolean): void {
     const rig = this.playerRig;
     const isCrouching = this.isCrouching();
-    const moveBlend = THREE.MathUtils.clamp(speed / 3.4, 0, 1);
-    const runBlend = isRunning ? THREE.MathUtils.clamp((speed - 3.0) / 2.8, 0, 1) : 0;
+    const normalWalkSpeed = THORNVALE_LOCOMOTION.WALK_SPEED_OVERWORLD;
+    const moveBlend = THREE.MathUtils.clamp(speed / normalWalkSpeed, 0, 1);
+    const runSpan = THORNVALE_LOCOMOTION.RUN_SPEED_OVERWORLD - normalWalkSpeed;
+    const runBlend = isRunning ? THREE.MathUtils.clamp((speed - normalWalkSpeed) / runSpan, 0, 1) : 0;
 
     this.stepTriggeredThisFrame = false;
-    if (speed > 0.32 && this.isGrounded) {
+    if (speed > 0.08 && this.isGrounded) {
       const prevStepBucket = Math.floor((this.walkCycle + Math.PI * 0.5) / Math.PI);
-      const freq = isCrouching ? 5.2 : THREE.MathUtils.lerp(7.2, 11.2, runBlend);
+      // Biomechanically accurate stride length and step cadence:
+      // Real human stride length: ~0.72m walking, ~1.12m running, ~0.52m crouching
+      const strideLength = isCrouching
+        ? THORNVALE_LOCOMOTION.STRIDE_CROUCH
+        : THREE.MathUtils.lerp(
+            THORNVALE_LOCOMOTION.STRIDE_WALK,
+            THORNVALE_LOCOMOTION.STRIDE_RUN,
+            runBlend
+          );
+      const freq = (speed / strideLength) * Math.PI;
       this.walkCycle += dt * freq;
       if (Math.floor((this.walkCycle + Math.PI * 0.5) / Math.PI) !== prevStepBucket) {
         this.stepTriggeredThisFrame = true;
@@ -2911,16 +3008,17 @@ export class ForestExplorerEngine {
       this.walkCycle = THREE.MathUtils.damp(
         this.walkCycle,
         Math.round(this.walkCycle / Math.PI) * Math.PI,
-        7,
+        6.5,
         dt
       );
     }
 
     const sPhase = Math.sin(this.walkCycle);
     const cPhase = Math.cos(this.walkCycle);
-    const swingAmp = THREE.MathUtils.lerp(0.56, 0.88, runBlend) * moveBlend;
+    const baseSwing = isCrouching ? 0.35 : THREE.MathUtils.lerp(0.48, 0.78, runBlend);
+    const swingAmp = baseSwing * Math.min(1.15, speed / (isCrouching ? 1.05 : normalWalkSpeed));
     const legSwing = sPhase * swingAmp;
-    const armSwing = sPhase * swingAmp * THREE.MathUtils.lerp(0.76, 0.96, runBlend);
+    const armSwing = sPhase * swingAmp * THREE.MathUtils.lerp(0.74, 0.94, runBlend);
 
     // Asymmetric knee flexion: heel-toe swing bends knee on lift, extends straight on support
     const leftKneeSwing =
